@@ -1,0 +1,5 @@
+{
+  "DFW": { "name": "Dallas/Fort Worth", "icao": "KDFW", "lat": 32.8998, "lon": -97.0403, "radiusNm": 30 },
+  "LAX": { "name": "Los Angeles", "icao": "KLAX", "lat": 33.9425, "lon": -118.4081, "radiusNm": 30 },
+  "ATL": { "name": "Atlanta", "icao": "KATL", "lat": 33.6407, "lon": -84.4277, "radiusNm": 30 }
+}

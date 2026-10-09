@@ -1,3 +1,5 @@
+import { CENTER, FEED, FETCH_RADIUS_NM } from './config'
+
 export interface Aircraft {
   hex: string
   callsign: string
@@ -10,6 +12,10 @@ export interface Aircraft {
   /** Barometric altitude in feet, or null if unknown. */
   altitude: number | null
   onGround: boolean
+  /** Feet per minute, positive when climbing, or null if unknown. */
+  verticalRate: number | null
+  /** ICAO type designator such as B738, or null if unknown. */
+  aircraftType: string | null
   /** Seconds since the position was received, so we can project it to the present. */
   positionAge: number
 }
@@ -25,14 +31,16 @@ interface RawAircraft {
   true_heading?: number
   gs?: number
   alt_baro?: number | 'ground'
+  baro_rate?: number
+  geom_rate?: number
+  t?: string
   seen_pos?: number
 }
 
-const REQUEST_TIMEOUT_MS = 10_000
-
 export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
-  const res = await fetch('/api/aircraft', {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
+  const query = new URLSearchParams({ lat: `${CENTER.lat}`, lon: `${CENTER.lon}`, radius: `${FETCH_RADIUS_NM}` })
+  const res = await fetch(`/api/aircraft?${query}`, {
+    signal: AbortSignal.any([signal, AbortSignal.timeout(FEED.requestTimeoutMs)]),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
@@ -51,6 +59,8 @@ export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
       groundSpeed: a.gs ?? null,
       altitude: typeof a.alt_baro === 'number' ? a.alt_baro : null,
       onGround: a.alt_baro === 'ground',
+      verticalRate: a.baro_rate ?? a.geom_rate ?? null,
+      aircraftType: a.t ?? null,
       positionAge: a.seen_pos ?? 0,
     }))
 }

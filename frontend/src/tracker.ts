@@ -1,5 +1,6 @@
 import type { Aircraft } from './api'
-import { POLL_MS } from './config'
+import { FEED, MAP, MOTION } from './config'
+import { wasLanding, type Flight } from './flights'
 
 export interface LatLon {
   lat: number
@@ -7,81 +8,92 @@ export interface LatLon {
 }
 
 export interface Track {
-  info: Aircraft
+  info: Flight
   /** Where the current segment starts (the drawn position when the last fetch landed). */
   from: LatLon
+  /** The drawn velocity when the segment started, so the curve continues smoothly from it. */
+  fromVelocity: LatLon
   /** Where the plane should be when the next fetch lands, dead-reckoned from its report. */
   to: LatLon
-  /** Degrees per millisecond, used to keep gliding if the next fetch is late. */
+  /** Reported velocity in degrees per millisecond; the segment ends moving at this. */
   velocity: LatLon
-  fromHeading: number
-  toHeading: number
   segmentStart: number
   segmentMs: number
   firstSeen: number
   lastSeen: number
+  /** Set when the aircraft touches down; it then fades out. */
+  landedAt: number | null
 
   /** Updated every frame by step(). */
   pos: LatLon
+  vel: LatLon
   heading: number
   opacity: number
   trail: LatLon[]
   lastTrailAt: number
 }
 
-const FADE_IN_MS = 1000
-/**
- * Keep dead-reckoning an aircraft for this long after it drops out of the feed
- * (e.g. rate-limited or failed fetches), then fade it out.
- */
-const STALE_MS = 30_000
-const FADE_OUT_MS = 2000
 const TRAIL_SAMPLE_MS = 500
-const TRAIL_POINTS = 60
 
 /**
- * Turns 5-second position snapshots into continuous motion.
+ * Turns periodic position snapshots into continuous motion.
  *
- * Each fetch starts a new segment that lerps from wherever the plane is
- * currently drawn to where its reported speed and track say it will be when the
- * next fetch lands. Planes never jump, move from the moment they appear, and keep
- * gliding along their heading if a fetch fails.
+ * Each fetch starts a new segment that curves from wherever the plane is drawn
+ * to where its reported speed and track say it will be when the next fetch
+ * lands. The curve (a cubic Hermite spline) starts at the plane's current
+ * velocity and ends at its reported velocity, so position and direction never
+ * jump: turns come out as smooth arcs instead of corners. Planes move from the
+ * moment they appear and keep gliding along their heading if a fetch fails.
+ *
+ * Only airborne aircraft are shown: one that lands rolls out and fades away, and
+ * one that takes off fades in as it appears.
  */
 export class Tracker {
   readonly tracks = new Map<string, Track>()
   private lastIngest: number | null = null
 
-  ingest(aircraft: Aircraft[], now: number) {
-    // Match the segment length to the real gap between fetches (POLL_MS plus
+  ingest(flights: Flight[], now: number) {
+    // Match the segment length to the real gap between fetches (pollMs plus
     // network latency) so planes arrive just as the next update lands.
     const segmentMs =
-      this.lastIngest === null ? POLL_MS : clamp(now - this.lastIngest, POLL_MS / 2, POLL_MS * 2)
+      this.lastIngest === null ? FEED.pollMs : clamp(now - this.lastIngest, FEED.pollMs / 2, FEED.pollMs * 2)
     this.lastIngest = now
 
-    for (const a of aircraft) {
+    const reported = new Set(flights.map((f) => f.hex))
+    for (const t of this.tracks.values()) {
+      // Low aircraft usually drop out of coverage at touchdown, before reporting "ground".
+      if (!reported.has(t.info.hex) && t.landedAt === null && wasLanding(t.info)) t.landedAt = now
+    }
+
+    for (const a of flights) {
+      const existing = this.tracks.get(a.hex)
+      if (a.onGround) {
+        if (existing && existing.landedAt === null) existing.landedAt = now
+        continue
+      }
+
       const velocity = velocityOf(a)
       // Reported positions are already `positionAge` seconds old; aim for where
       // the plane will be at the end of this segment.
-      const reported = { lat: a.lat, lon: a.lon }
-      const target = advance(reported, velocity, a.positionAge * 1000 + segmentMs)
-      const existing = this.tracks.get(a.hex)
+      const position = { lat: a.lat, lon: a.lon }
+      const target = advance(position, velocity, a.positionAge * 1000 + segmentMs)
 
       if (!existing) {
-        const heading = a.track ?? 0
-        const pos = advance(reported, velocity, a.positionAge * 1000)
+        const pos = advance(position, velocity, a.positionAge * 1000)
         this.tracks.set(a.hex, {
           info: a,
           from: pos,
+          fromVelocity: velocity,
           to: target,
           velocity,
-          fromHeading: heading,
-          toHeading: heading,
           segmentStart: now,
           segmentMs,
           firstSeen: now,
           lastSeen: now,
+          landedAt: null,
           pos,
-          heading,
+          vel: velocity,
+          heading: a.track ?? 0,
           opacity: 0,
           trail: [],
           lastTrailAt: now,
@@ -91,13 +103,14 @@ export class Tracker {
 
       existing.info = a
       existing.from = existing.pos
+      existing.fromVelocity = existing.vel
       existing.to = target
       existing.velocity = velocity
-      existing.fromHeading = existing.heading
-      existing.toHeading = a.track ?? existing.heading
       existing.segmentStart = now
       existing.segmentMs = segmentMs
       existing.lastSeen = now
+      // Touchdown reports can flicker; an airborne report means it's still flying.
+      existing.landedAt = null
     }
   }
 
@@ -105,32 +118,39 @@ export class Tracker {
   step(now: number) {
     for (const [hex, t] of this.tracks) {
       const missingFor = now - t.lastSeen
-      if (missingFor > STALE_MS + FADE_OUT_MS) {
+      const landedFor = t.landedAt === null ? 0 : now - t.landedAt
+      if (missingFor > MOTION.staleMs + MOTION.fadeOutMs || landedFor > MOTION.landingFadeMs) {
         this.tracks.delete(hex)
         continue
       }
 
       const elapsed = now - t.segmentStart
-      if (elapsed <= t.segmentMs) {
-        const progress = elapsed / t.segmentMs
+      if (elapsed < t.segmentMs) {
+        const u = elapsed / t.segmentMs
         t.pos = {
-          lat: lerp(t.from.lat, t.to.lat, progress),
-          lon: lerp(t.from.lon, t.to.lon, progress),
+          lat: hermite(t.from.lat, t.fromVelocity.lat, t.to.lat, t.velocity.lat, t.segmentMs, u),
+          lon: hermite(t.from.lon, t.fromVelocity.lon, t.to.lon, t.velocity.lon, t.segmentMs, u),
         }
-        t.heading = lerpAngle(t.fromHeading, t.toHeading, progress)
+        t.vel = {
+          lat: hermiteSlope(t.from.lat, t.fromVelocity.lat, t.to.lat, t.velocity.lat, t.segmentMs, u),
+          lon: hermiteSlope(t.from.lon, t.fromVelocity.lon, t.to.lon, t.velocity.lon, t.segmentMs, u),
+        }
       } else {
         // The next fetch is late: keep flying straight at the last known speed.
         t.pos = advance(t.to, t.velocity, elapsed - t.segmentMs)
-        t.heading = t.toHeading
+        t.vel = t.velocity
       }
+      // Point the arrow along the curve; keep the last heading if the speed is unknown.
+      t.heading = headingOf(t.vel, t.pos.lat) ?? t.info.track ?? t.heading
 
-      const fadeIn = Math.min((now - t.firstSeen) / FADE_IN_MS, 1)
-      const fadeOut = 1 - clamp((missingFor - STALE_MS) / FADE_OUT_MS, 0, 1)
-      t.opacity = Math.min(fadeIn, fadeOut)
+      const fadeIn = Math.min((now - t.firstSeen) / MOTION.fadeInMs, 1)
+      const fadeOut = 1 - clamp((missingFor - MOTION.staleMs) / MOTION.fadeOutMs, 0, 1)
+      const landingFade = 1 - landedFor / MOTION.landingFadeMs
+      t.opacity = Math.min(fadeIn, fadeOut, landingFade)
 
       if (now - t.lastTrailAt >= TRAIL_SAMPLE_MS) {
         t.trail.push(t.pos)
-        if (t.trail.length > TRAIL_POINTS) t.trail.shift()
+        if (t.trail.length > (MAP.trailSeconds * 1000) / TRAIL_SAMPLE_MS) t.trail.shift()
         t.lastTrailAt = now
       }
     }
@@ -151,18 +171,37 @@ function velocityOf(a: Aircraft): LatLon {
   }
 }
 
+/** Compass heading of a velocity, or null if it's not moving. */
+function headingOf(v: LatLon, lat: number): number | null {
+  const east = v.lon * Math.cos((lat * Math.PI) / 180)
+  const north = v.lat
+  if (east === 0 && north === 0) return null
+  return ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360
+}
+
 function advance(p: LatLon, velocity: LatLon, ms: number): LatLon {
   return { lat: p.lat + velocity.lat * ms, lon: p.lon + velocity.lon * ms }
 }
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t
+/**
+ * Cubic Hermite interpolation from p0 (moving at v0) to p1 (moving at v1) over
+ * `duration` ms, evaluated at fraction u in [0, 1].
+ */
+function hermite(p0: number, v0: number, p1: number, v1: number, duration: number, u: number) {
+  const u2 = u * u
+  const u3 = u2 * u
+  return (
+    (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * duration * v0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * duration * v1
+  )
 }
 
-/** Interpolate between two compass headings the short way around. */
-function lerpAngle(a: number, b: number, t: number) {
-  const delta = ((b - a + 540) % 360) - 180
-  return (a + delta * t + 360) % 360
+/** Rate of change of hermite() per millisecond, i.e. the velocity along the curve. */
+function hermiteSlope(p0: number, v0: number, p1: number, v1: number, duration: number, u: number) {
+  const u2 = u * u
+  return (
+    ((6 * u2 - 6 * u) * p0 + (3 * u2 - 4 * u + 1) * duration * v0 + (-6 * u2 + 6 * u) * p1 + (3 * u2 - 2 * u) * duration * v1) /
+    duration
+  )
 }
 
 function clamp(v: number, min: number, max: number) {

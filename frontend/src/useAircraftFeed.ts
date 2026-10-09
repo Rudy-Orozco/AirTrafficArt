@@ -1,42 +1,75 @@
 import { useEffect, useState } from 'react'
 import { fetchAircraft } from './api'
-import { POLL_MS } from './config'
+import { FlightBoard, type BoardState } from './flightBoard'
+import { FEED } from './config'
+import { FlightClassifier } from './flights'
+import { RouteCache } from './routes'
 import type { Tracker } from './tracker'
 
-const MAX_BACKOFF_MS = 60_000
-
 export interface FeedStatus {
+  /** Airborne aircraft in range. */
   count: number
   updatedAt: Date | null
   error: string | null
+  /** The next scheduled fetch: a unique id and how long until it runs, including any backoff after errors. */
+  nextPoll: { id: number; delayMs: number } | null
 }
 
-/** Polls /api/aircraft every POLL_MS and feeds each snapshot into the tracker. */
-export function useAircraftFeed(tracker: Tracker): FeedStatus {
-  const [status, setStatus] = useState<FeedStatus>({ count: 0, updatedAt: null, error: null })
+export interface Feed {
+  status: FeedStatus
+  board: BoardState
+}
+
+/**
+ * Polls /api/aircraft every FEED.pollMs, looks up each flight's route, and feeds the
+ * classified flights to the tracker (map) and the arrivals/departures board.
+ */
+export function useAircraftFeed(tracker: Tracker): Feed {
+  const [feed, setFeed] = useState<Feed>({
+    status: { count: 0, updatedAt: null, error: null, nextPoll: null },
+    board: { arrivals: [], departures: [], landing: null, takeoff: null },
+  })
 
   useEffect(() => {
     const controller = new AbortController()
+    const routes = new RouteCache()
+    const classifier = new FlightClassifier()
+    const board = new FlightBoard()
     let timer: ReturnType<typeof setTimeout>
     let failures = 0
+    let polls = 0
+
+    // Back off on errors (e.g. HTTP 429). Otherwise schedule from when the poll
+    // started so latency doesn't stretch the interval.
+    const scheduleNext = (started: number) => {
+      const interval = Math.min(FEED.pollMs * 2 ** failures, FEED.maxBackoffMs)
+      const delay = Math.max(0, interval - (performance.now() - started))
+      timer = setTimeout(poll, delay)
+      return { id: ++polls, delayMs: delay }
+    }
 
     const poll = async () => {
       const started = performance.now()
       try {
         const aircraft = await fetchAircraft(controller.signal)
-        tracker.ingest(aircraft, performance.now())
+        const routeMap = await routes.lookup(aircraft, controller.signal)
+        const flights = classifier.classify(aircraft, routeMap)
+        tracker.ingest(flights, performance.now())
         failures = 0
-        setStatus({ count: aircraft.length, updatedAt: new Date(), error: null })
+        const count = flights.filter((f) => !f.onGround).length
+        const nextPoll = scheduleNext(started)
+        setFeed({
+          status: { count, updatedAt: new Date(), error: null, nextPoll },
+          board: board.update(flights, Date.now()),
+        })
       } catch (err) {
         if (controller.signal.aborted) return
         failures++
         // Keep the last snapshot on screen; the tracker keeps planes gliding meanwhile.
-        setStatus((s) => ({ ...s, error: err instanceof Error ? err.message : String(err) }))
+        const error = err instanceof Error ? err.message : String(err)
+        const nextPoll = scheduleNext(started)
+        setFeed((f) => ({ ...f, status: { ...f.status, error, nextPoll } }))
       }
-      // Back off on errors (e.g. HTTP 429). Otherwise schedule from when this
-      // poll started so latency doesn't stretch the interval.
-      const interval = Math.min(POLL_MS * 2 ** failures, MAX_BACKOFF_MS)
-      timer = setTimeout(poll, Math.max(0, interval - (performance.now() - started)))
     }
     poll()
 
@@ -46,5 +79,5 @@ export function useAircraftFeed(tracker: Tracker): FeedStatus {
     }
   }, [tracker])
 
-  return status
+  return feed
 }

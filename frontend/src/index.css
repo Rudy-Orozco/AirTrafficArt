@@ -1,3 +1,26 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+  --bg: #03050a;
+  --row: #0e1218;
+  --line: rgba(220, 230, 245, 0.16);
+  --text: #f1f3f6;
+  --text-dim: rgba(220, 228, 240, 0.45);
+  --error: #ff6b57;
+  /* Inter for headings and the clock; JetBrains Mono for flight information. */
+  --sans: 'Inter Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+/* Registered so it resolves to pixels once and every descendant shares the same
+   tile width, whatever its own font size (keeps headers aligned with tiles). */
+@property --cell {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 html,
 body,
 #root {
@@ -5,26 +28,390 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #03050a;
+  background: var(--bg);
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  /* Cap the board's text so it stays compact on a portrait screen. */
+  --board-max-font: 1.2vh;
 }
 
 .radar {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.hud {
-  position: fixed;
-  bottom: 16px;
+/* ---- Board: floats over the bottom of the map and fades into it ------------ */
+
+.board {
+  position: absolute;
   left: 0;
   right: 0;
-  text-align: center;
-  font: 13px ui-monospace, 'DejaVu Sans Mono', monospace;
-  color: rgba(160, 190, 230, 0.55);
-  pointer-events: none;
+  bottom: 0;
+  padding-top: 12vh;
+  /* Text scales with the board's own width (cqi), so it fits either layout. */
+  container-type: inline-size;
+  background: linear-gradient(to bottom, rgb(3 5 10 / 0), rgb(3 5 10 / 0.82) 7vh, rgb(3 5 10 / 0.95) 12vh);
 }
 
-.hud-error {
-  color: rgba(255, 140, 120, 0.8);
+/* Landscape windows: the board floats over the right side instead. */
+@media (min-aspect-ratio: 1/1) {
+  .app {
+    --board-max-font: 2.2vh;
+  }
+
+  .board {
+    top: 0;
+    left: auto;
+    box-sizing: border-box;
+    width: min(54%, 880px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-top: 0;
+    padding-left: 10vw;
+    background: linear-gradient(to right, rgb(3 5 10 / 0), rgb(3 5 10 / 0.82) 6vw, rgb(3 5 10 / 0.95) 10vw);
+  }
+}
+
+.board-inner {
+  /* Two 37-character boards side by side: ~16px on a 1080px-wide portrait screen. */
+  font: 500 clamp(9px, min(1.5cqi, var(--board-max-font)), 22px) / 1.2 var(--mono);
+  --cell: 0.8em;
+  color: var(--text);
+  padding: 0 1.2em;
+}
+
+/* ---- Weather (METAR) -------------------------------------------------------------- */
+
+.metar {
+  margin-bottom: 1.5em;
+  text-transform: uppercase;
+}
+
+/* Readings in a centered row of cells: small label over value, thin dividers between. */
+.metar-cells {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  row-gap: 0.7em;
+}
+
+.metar-cat {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding-right: 1.1em;
+  font: 800 1.15em / 1 var(--sans);
+  letter-spacing: 0.04em;
+}
+
+.metar-dot {
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0.6em currentColor;
+}
+
+/* Standard flight category colors. */
+.metar-cat--vfr {
+  color: #3ecf6e;
+}
+.metar-cat--mvfr {
+  color: #4ea2ff;
+}
+.metar-cat--ifr {
+  color: #ff5a4f;
+}
+.metar-cat--lifr {
+  color: #d65cff;
+}
+
+.metar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0 1.1em;
+  border-left: 1px solid var(--line);
+}
+
+/* Line icons above each reading; .filled parts (pennants, sky cover) are solid. */
+.metar-icon {
+  width: 1.7em;
+  height: 1.7em;
+  margin-bottom: 0.15em;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.metar-icon .filled {
+  fill: var(--text);
+  stroke: none;
+}
+
+.metar-icon .thick {
+  stroke-width: 2.2;
+}
+
+.metar-label {
+  font: 600 0.5em / 1 var(--sans);
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
+}
+
+.metar-value {
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.metar-raw {
+  display: flex;
+  justify-content: center;
+  gap: 1.2em;
+  margin-top: 0.9em;
+  font-size: 0.6em;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.metar-raw-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
+.metar-age {
+  flex: none;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.metar-age.is-stale {
+  color: var(--error);
+  opacity: 1;
+}
+
+.board-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1.1em;
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid var(--text);
+}
+
+.board-top b {
+  font: 900 2.4em / 1 var(--sans);
+  letter-spacing: -0.03em;
+}
+
+.board-clock {
+  font: 300 2.4em / 1 var(--sans);
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.02em;
+}
+
+.board-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6em;
+}
+
+/* Too narrow for two boards side by side: stack them. */
+@container (max-width: 760px) {
+  .board-inner {
+    font-size: clamp(9px, min(2.9cqi, var(--board-max-font)), 22px);
+  }
+
+  .board-panels {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tighter weather cells so they still fit on one line. */
+  .metar-cell {
+    padding: 0 0.6em;
+  }
+
+  .metar-cat {
+    padding-right: 0.6em;
+  }
+}
+
+/* ---- Panel -------------------------------------------------------------------- */
+
+.panel {
+  --accent: var(--arrival);
+  min-width: 0;
+}
+
+.panel--departures {
+  --accent: var(--departure);
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 3px solid var(--accent);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font: 800 1.35em / 1 var(--sans);
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.panel-header span {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.panel-event {
+  margin-left: auto;
+  align-self: center;
+  color: var(--accent);
+  font-size: 0.9em;
+}
+
+.panel-event .flap {
+  /* Tighter than the rows so the header still fits "DEPARTURES", the count and the page. */
+  width: calc(var(--cell) * 0.82);
+  height: auto;
+  line-height: 1;
+}
+
+.panel-header .panel-page {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: var(--columns);
+  column-gap: var(--cell);
+}
+
+.panel-columns {
+  margin: 0.6em 0 0.4em;
+  /* Line up with the text inside the rows' padding (0.6em of the row font). */
+  padding: 0 calc(var(--cell) * 0.75);
+  font: 600 0.6em / 1 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Rows ------------------------------------------------------------------------- */
+
+/* Each row is one solid bar; the characters on it still flip individually. */
+.row {
+  padding: 0 calc(var(--cell) * 0.75);
+  background: var(--row);
+}
+
+.flaps {
+  display: flex;
+}
+
+.flap {
+  flex: none;
+  width: var(--cell);
+  height: 1.45em;
+  line-height: 1.45em;
+  text-align: center;
+  font-weight: 600;
+}
+
+.row-status .flap {
+  color: var(--accent);
+}
+
+.row.is-landed .row-status .flap {
+  color: var(--text);
+}
+
+/* ---- Footer ---------------------------------------------------------------------- */
+
+.board-footer {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.1em;
+  padding: 0.7em 0 1.1em;
+  border-top: 1px solid var(--line);
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+.board-footer .is-error {
+  color: var(--error);
+}
+
+.board-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+}
+
+/* Countdown to the next data fetch: the ring empties as it approaches. */
+.poll-timer {
+  width: 1.5em;
+  height: 1.5em;
+  transform: rotate(-90deg);
+}
+
+.poll-timer circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.poll-timer-track {
+  stroke: var(--line);
+}
+
+.poll-timer-ring {
+  stroke: var(--text);
+  stroke-dasharray: 1;
+  animation: poll-countdown linear both;
+}
+
+.is-error .poll-timer-ring {
+  stroke: var(--error);
+}
+
+@keyframes poll-countdown {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 1;
+  }
 }

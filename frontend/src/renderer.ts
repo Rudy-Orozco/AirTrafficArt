@@ -1,4 +1,7 @@
 import type { Basemap, Line } from './basemap'
+import { MAP } from './config'
+import type { FlightKind } from './flights'
+import { leaderLine, newLabelState, updateLabels, type LabelItem, type LabelState } from './labels'
 import type { LatLon, Track } from './tracker'
 
 export interface Point {
@@ -8,21 +11,37 @@ export interface Point {
 
 export type Projection = (p: LatLon) => Point
 
+/** Where the map center sits on screen and how many pixels make a nautical mile. */
+export interface View {
+  cx: number
+  cy: number
+  pxPerNm: number
+}
+
 const NM_PER_DEG_LAT = 60
-const RING_SPACING_NM = 10
-const PLANE_SIZE = 9
-const LABEL_FONT = '12px ui-monospace, "DejaVu Sans Mono", monospace'
+export const LABEL_FONT = `${MAP.labelSize}px ${MAP.fontFamily}`
+
+/**
+ * Centers the map in the part of the screen the board doesn't cover, with
+ * `radiusNm` reaching the nearer edge of that area.
+ */
+export function createView(visibleWidth: number, visibleHeight: number, radiusNm: number): View {
+  return {
+    cx: visibleWidth / 2,
+    cy: visibleHeight / 2,
+    pxPerNm: Math.min(visibleWidth, visibleHeight) / 2 / radiusNm,
+  }
+}
 
 /**
  * Flat projection centered on `center`. Accurate enough for a ~100 nm view and
- * much cheaper than Web Mercator. `radiusNm` maps to half the screen's short side.
+ * much cheaper than Web Mercator.
  */
-export function createProjection(width: number, height: number, center: LatLon, radiusNm: number): Projection {
-  const pxPerNm = Math.min(width, height) / 2 / radiusNm
+export function createProjection(view: View, center: LatLon): Projection {
   const lonScale = Math.cos((center.lat * Math.PI) / 180)
   return ({ lat, lon }) => ({
-    x: width / 2 + (lon - center.lon) * NM_PER_DEG_LAT * lonScale * pxPerNm,
-    y: height / 2 - (lat - center.lat) * NM_PER_DEG_LAT * pxPerNm,
+    x: view.cx + (lon - center.lon) * NM_PER_DEG_LAT * lonScale * view.pxPerNm,
+    y: view.cy - (lat - center.lat) * NM_PER_DEG_LAT * view.pxPerNm,
   })
 }
 
@@ -34,7 +53,7 @@ export function renderBackground(
   width: number,
   height: number,
   dpr: number,
-  radiusNm: number,
+  view: View,
   project: Projection,
   basemap: Basemap | null,
 ): HTMLCanvasElement {
@@ -44,24 +63,24 @@ export function renderBackground(
   const ctx = canvas.getContext('2d')!
   ctx.scale(dpr, dpr)
 
-  const cx = width / 2
-  const cy = height / 2
-  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(cx, cy))
+  const { cx, cy, pxPerNm } = view
+  // Far enough to reach every corner of the screen, wherever the center sits.
+  const maxRadius = Math.max(Math.hypot(cx, cy), Math.hypot(width - cx, cy), Math.hypot(cx, height - cy), Math.hypot(width - cx, height - cy))
+  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxRadius)
   gradient.addColorStop(0, '#0b1424')
   gradient.addColorStop(1, '#03050a')
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, width, height)
 
-  if (basemap) drawBasemap(ctx, basemap, project, width, height)
+  if (basemap) drawBasemap(ctx, basemap, project)
 
-  const pxPerNm = Math.min(width, height) / 2 / radiusNm
-  const maxRingNm = Math.hypot(cx, cy) / pxPerNm
+  const maxRingNm = maxRadius / pxPerNm
   ctx.strokeStyle = 'rgba(120, 160, 220, 0.12)'
   ctx.fillStyle = 'rgba(120, 160, 220, 0.35)'
   ctx.lineWidth = 1
   ctx.font = LABEL_FONT
   ctx.textAlign = 'center'
-  for (let nm = RING_SPACING_NM; nm <= maxRingNm; nm += RING_SPACING_NM) {
+  for (let nm = MAP.ringSpacingNm; nm <= maxRingNm; nm += MAP.ringSpacingNm) {
     const r = nm * pxPerNm
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
@@ -73,7 +92,7 @@ export function renderBackground(
 }
 
 /** Faint water and freeways for orientation, with runways as the brightest detail. */
-function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Projection, width: number, height: number) {
+function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Projection) {
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
@@ -82,11 +101,12 @@ function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Proje
   ctx.fillStyle = 'rgba(50, 100, 170, 0.22)'
   ctx.fill()
 
+  strokeLines(ctx, map.coastlines ?? [], project, 'rgba(70, 120, 190, 0.45)', 1.25)
   strokeLines(ctx, map.rivers, project, 'rgba(50, 100, 170, 0.18)', 0.75)
   strokeLines(ctx, map.highways, project, 'rgba(140, 160, 200, 0.10)', 1)
   strokeLines(ctx, map.runways, project, 'rgba(190, 205, 230, 0.45)', 2.5)
 
-  ctx.font = '11px ui-monospace, "DejaVu Sans Mono", monospace'
+  ctx.font = `${MAP.labelSize - 1}px ${MAP.fontFamily}`
   ctx.letterSpacing = '3px'
   ctx.textAlign = 'center'
   ctx.fillStyle = 'rgba(160, 180, 215, 0.28)'
@@ -97,9 +117,12 @@ function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Proje
 
   ctx.font = LABEL_FONT
   ctx.letterSpacing = '0px'
-  ctx.textAlign = 'right'
   ctx.fillStyle = 'rgba(160, 180, 215, 0.25)'
-  ctx.fillText(map.attribution, width - 12, height - 12)
+  // Top corner: the board covers the bottom (or right) of the map.
+  ctx.textBaseline = 'top'
+  ctx.textAlign = 'left'
+  ctx.fillText(map.attribution, 12, 12)
+  ctx.textBaseline = 'alphabetic'
 }
 
 /** Strokes every line as one path, which is far cheaper than stroking each separately. */
@@ -126,36 +149,109 @@ export function drawTracks(ctx: CanvasRenderingContext2D, tracks: Iterable<Track
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
-  for (const t of tracks) {
-    if (t.opacity <= 0) continue
-    const hue = altitudeHue(t.info.altitude, t.info.onGround)
-    const pos = project(t.pos)
+  // Draw background traffic first so arrivals and departures sit on top.
+  const visible = [...tracks]
+    .filter((t) => t.opacity > 0)
+    .sort((a, b) => DRAW_ORDER[a.info.kind] - DRAW_ORDER[b.info.kind])
+  const positions = visible.map((t) => project(t.pos))
 
-    drawTrail(ctx, t, pos, project, hue)
+  visible.forEach((t, i) => {
+    const { color, opacity } = KIND_STYLES[t.info.kind]
+    drawTrail(ctx, t, positions[i], project, color, t.opacity * opacity)
+    ctx.globalAlpha = t.opacity * opacity
+    ctx.fillStyle = color
+    drawPlane(ctx, positions[i], t.heading, MAP.planeSize)
+  })
 
-    // Parked and taxiing aircraft are drawn small and dim so airports stay legible.
-    ctx.globalAlpha = t.info.onGround ? t.opacity * 0.5 : t.opacity
-    ctx.fillStyle = `hsl(${hue} 90% 65%)`
-    drawPlane(ctx, pos, t.heading, t.info.onGround ? PLANE_SIZE * 0.5 : PLANE_SIZE)
-
-    // Parked aircraft cluster at airports; labeling them is just clutter.
-    if (!t.info.onGround) {
-      ctx.fillStyle = `hsl(${hue} 40% 80% / 0.75)`
-      ctx.fillText(label(t), pos.x + PLANE_SIZE + 3, pos.y + 4)
-    }
-    ctx.globalAlpha = 1
-  }
+  if (MAP.showLabels) drawLabels(ctx, visible, positions)
+  ctx.globalAlpha = 1
 }
 
-function drawTrail(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project: Projection, hue: number) {
+const LABEL_OPACITY = 0.8
+const LABEL_HEIGHT = MAP.labelSize + 2
+
+/** Each aircraft's label placement, kept between frames so labels glide rather than jump. */
+const labelStates = new WeakMap<Track, LabelState>()
+const textWidths = new Map<string, number>()
+// Widths measured with a fallback font are wrong once the web font arrives.
+document.fonts.addEventListener('loadingdone', () => textWidths.clear())
+
+/**
+ * Labels go on top of every aircraft, each in a free spot around its aircraft,
+ * with a leader line when it had to sit farther out.
+ */
+function drawLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: Point[]) {
+  const texts = tracks.map(label)
+  const items: LabelItem[] = tracks.map((t, i) => {
+    const width = measure(ctx, texts[i])
+    let state = labelStates.get(t)
+    if (!state) {
+      state = newLabelState(width)
+      labelStates.set(t, state)
+    }
+    const isBackground = t.info.kind === 'other'
+    return {
+      anchor: positions[i],
+      width,
+      height: LABEL_HEIGHT,
+      priority: isBackground ? 1 : 0,
+      optional: isBackground && MAP.hideCrowdedLabels,
+      state,
+    }
+  })
+  updateLabels(items, positions, { width: ctx.canvas.clientWidth, height: ctx.canvas.clientHeight }, performance.now())
+
+  ctx.textBaseline = 'middle'
+  ctx.lineWidth = 1
+  items.forEach((item, i) => {
+    const { color, opacity } = KIND_STYLES[tracks[i].info.kind]
+    ctx.globalAlpha = tracks[i].opacity * opacity * LABEL_OPACITY * item.state.alpha
+    if (ctx.globalAlpha < 0.01) return
+    const line = leaderLine(item)
+    if (line) {
+      ctx.strokeStyle = color
+      ctx.globalAlpha *= 0.6
+      ctx.beginPath()
+      ctx.moveTo(line.from.x, line.from.y)
+      ctx.lineTo(line.to.x, line.to.y)
+      ctx.stroke()
+      ctx.globalAlpha /= 0.6
+    }
+    ctx.fillStyle = color
+    const { offset } = item.state
+    ctx.fillText(texts[i], item.anchor.x + offset.x - item.width / 2, item.anchor.y + offset.y)
+  })
+  ctx.textBaseline = 'alphabetic'
+}
+
+function measure(ctx: CanvasRenderingContext2D, text: string) {
+  let width = textWidths.get(text)
+  if (width === undefined) {
+    // Labels change as altitudes do; don't let the cache grow forever.
+    if (textWidths.size > 2000) textWidths.clear()
+    width = ctx.measureText(text).width
+    textWidths.set(text, width)
+  }
+  return width
+}
+
+const KIND_STYLES: Record<FlightKind, { color: string; opacity: number }> = {
+  departure: { color: MAP.departureColor, opacity: 1 },
+  arrival: { color: MAP.arrivalColor, opacity: 1 },
+  other: { color: MAP.otherColor, opacity: MAP.otherOpacity },
+}
+
+const DRAW_ORDER: Record<FlightKind, number> = { other: 0, departure: 1, arrival: 1 }
+
+function drawTrail(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project: Projection, color: string, opacity: number) {
   if (t.trail.length < 2) return
   const start = project(t.trail[0])
 
   // One path per plane with a tail-to-head gradient: looks like a fading trail
   // at a fraction of the cost of stroking every segment separately.
   const gradient = ctx.createLinearGradient(start.x, start.y, pos.x, pos.y)
-  gradient.addColorStop(0, `hsl(${hue} 90% 60% / 0)`)
-  gradient.addColorStop(1, `hsl(${hue} 90% 60% / ${0.55 * t.opacity})`)
+  gradient.addColorStop(0, withAlpha(color, 0))
+  gradient.addColorStop(1, withAlpha(color, MAP.trailOpacity * opacity))
 
   ctx.beginPath()
   ctx.moveTo(start.x, start.y)
@@ -165,8 +261,14 @@ function drawTrail(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project:
   }
   ctx.lineTo(pos.x, pos.y)
   ctx.strokeStyle = gradient
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = MAP.trailWidth
   ctx.stroke()
+}
+
+/** "#rrggbb" plus an alpha, as a CSS color. */
+function withAlpha(hex: string, alpha: number) {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgb(${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255} / ${alpha})`
 }
 
 /** An arrowhead pointing along `heading` (degrees clockwise from north). */
@@ -190,8 +292,3 @@ function label(t: Track) {
   return `${callsign} ${Math.round(altitude / 100).toString().padStart(3, '0')}`
 }
 
-/** Warm colors near the ground, cooling to blue/violet at cruise altitude. */
-function altitudeHue(altitude: number | null, onGround: boolean) {
-  if (onGround || altitude === null) return 40
-  return 20 + Math.min(altitude / 40_000, 1) * 240
-}

@@ -1,26 +1,18 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AirTrafficCanvas } from './AirTrafficCanvas'
+import { Board } from './Board'
 import { Tracker } from './tracker'
 import { useAircraftFeed } from './useAircraftFeed'
 
 export default function App() {
   const [tracker] = useState(() => new Tracker())
-  const { count, updatedAt, error } = useAircraftFeed(tracker)
+  const { status, board } = useAircraftFeed(tracker)
+  const boardRef = useRef<HTMLElement>(null)
 
   return (
-    <>
-      <AirTrafficCanvas tracker={tracker} />
-      <footer className="hud">
-        {error ? (
-          <span className="hud-error">Feed unavailable: {error}</span>
-        ) : updatedAt ? (
-          <span>
-            {count} aircraft · updated {updatedAt.toLocaleTimeString()}
-          </span>
-        ) : (
-          <span>Waiting for data…</span>
-        )}
-      </footer>
-    </>
+    <main className="app">
+      <AirTrafficCanvas tracker={tracker} overlay={boardRef} />
+      <Board board={board} status={status} ref={boardRef} />
+    </main>
   )
 }

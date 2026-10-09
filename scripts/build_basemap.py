@@ -1,40 +1,33 @@
-"""Download a minimalist basemap from OpenStreetMap for the display area.
+"""Download minimalist basemaps from OpenStreetMap for the airport presets.
 
-Reads the center and view radius from frontend/.env, queries the Overpass API for
-lakes, rivers, freeways, runways and city names, simplifies the geometry, and
-writes frontend/public/basemap.json. Re-run after changing the location:
+Reads the presets from frontend/airports.json, queries the Overpass API for
+coastlines, lakes, rivers, freeways, runways and city names around each one,
+simplifies the geometry, and writes frontend/public/basemaps/<CODE>.json.
 
-    python3 scripts/build_basemap.py
+    python3 scripts/build_basemap.py            # every preset
+    python3 scripts/build_basemap.py LAX ATL    # just these
 """
 
 import json
 import math
+import sys
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV_FILE = ROOT / "frontend" / ".env"
-OUT_FILE = ROOT / "frontend" / "public" / "basemap.json"
+AIRPORTS_FILE = ROOT / "frontend" / "airports.json"
+OUT_DIR = ROOT / "frontend" / "public" / "basemaps"
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# Cover a 9:16 portrait screen's corners, matching the fetch radius in vite.config.ts.
+# Cover a 9:16 portrait screen's corners, matching FETCH_RADIUS_NM in src/config.ts.
 RADIUS_FACTOR = 2.1
 # ~80 m: well under one pixel at typical zoom levels, so simplification is invisible.
 SIMPLIFY_TOLERANCE_DEG = 0.0008
 # Skip ponds and retention basins; keep lakes and reservoirs.
 MIN_WATER_AREA_KM2 = 1.0
 COORD_DECIMALS = 4
-
-
-def read_env() -> dict[str, str]:
-    env = {}
-    for line in ENV_FILE.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, value = line.split("=", 1)
-            env[key.strip()] = value.strip()
-    return env
 
 
 def bounding_box(lat: float, lon: float, radius_nm: float) -> tuple[float, float, float, float]:
@@ -116,18 +109,18 @@ def compact(points: list[tuple[float, float]]) -> list[list[float]]:
     return [[round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)] for x, y in simplified]
 
 
-def main() -> None:
-    env = read_env()
-    lat, lon = float(env["VITE_CENTER_LAT"]), float(env["VITE_CENTER_LON"])
-    radius_nm = float(env["VITE_VIEW_RADIUS_NM"]) * RADIUS_FACTOR
+def build(code: str, preset: dict) -> None:
+    lat, lon = preset["lat"], preset["lon"]
+    radius_nm = preset["radiusNm"] * RADIUS_FACTOR
     bbox = "{:.4f},{:.4f},{:.4f},{:.4f}".format(*bounding_box(lat, lon, radius_nm))
-    print(f"Fetching OpenStreetMap features around {lat}, {lon} ({radius_nm:.0f} nm)…")
+    print(f"{code}: fetching OpenStreetMap features around {lat}, {lon} ({radius_nm:.0f} nm)…")
 
     elements = overpass(f"""
         [out:json][timeout:180][bbox:{bbox}];
         (
           way["natural"="water"];
           relation["natural"="water"];
+          way["natural"="coastline"];
           way["waterway"="river"];
           way["highway"="motorway"];
           way["aeroway"="runway"];
@@ -137,7 +130,7 @@ def main() -> None:
         out;
     """)
 
-    water, rivers, highways, runways, cities = [], [], [], [], []
+    water, coastlines, rivers, highways, runways, cities = [], [], [], [], [], []
     for el in elements:
         tags = el.get("tags", {})
         if el["type"] == "node":
@@ -149,6 +142,8 @@ def main() -> None:
             else:
                 rings = [geometry(el)]
             water += [compact(r) for r in rings if len(r) > 2 and ring_area_km2(r) >= MIN_WATER_AREA_KM2]
+        elif tags.get("natural") == "coastline":
+            coastlines.append(compact(geometry(el)))
         elif tags.get("waterway") == "river":
             rivers.append(compact(geometry(el)))
         elif tags.get("highway") == "motorway":
@@ -159,18 +154,32 @@ def main() -> None:
     basemap = {
         "attribution": "© OpenStreetMap contributors",
         "water": water,
+        "coastlines": coastlines,
         "rivers": rivers,
         "highways": highways,
         "runways": runways,
         "cities": cities,
     }
-    OUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    OUT_FILE.write_text(json.dumps(basemap, separators=(",", ":")))
+    out_file = OUT_DIR / f"{code}.json"
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    out_file.write_text(json.dumps(basemap, separators=(",", ":")))
     print(
-        f"Wrote {OUT_FILE.relative_to(ROOT)} ({OUT_FILE.stat().st_size / 1024:.0f} KB): "
-        f"{len(water)} lakes, {len(rivers)} river segments, {len(highways)} freeway segments, "
-        f"{len(runways)} runways, {len(cities)} cities"
+        f"{code}: wrote {out_file.relative_to(ROOT)} ({out_file.stat().st_size / 1024:.0f} KB): "
+        f"{len(water)} lakes, {len(coastlines)} coastline segments, {len(rivers)} river segments, "
+        f"{len(highways)} freeway segments, {len(runways)} runways, {len(cities)} cities"
     )
+
+
+def main() -> None:
+    presets = json.loads(AIRPORTS_FILE.read_text())
+    codes = [c.upper() for c in sys.argv[1:]] or list(presets)
+    unknown = [c for c in codes if c not in presets]
+    if unknown:
+        sys.exit(f"Not in {AIRPORTS_FILE.relative_to(ROOT)}: {', '.join(unknown)}")
+    for i, code in enumerate(codes):
+        if i:
+            time.sleep(5)  # Be polite to the shared Overpass server between queries.
+        build(code, presets[code])
 
 
 if __name__ == "__main__":

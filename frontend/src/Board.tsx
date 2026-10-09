@@ -1,0 +1,197 @@
+import { useEffect, useState, type CSSProperties, type Ref } from 'react'
+import { AIRPORT, BOARD, MAP } from './config'
+import { FlapText } from './FlapText'
+import type { BoardEvent, BoardRow, BoardState } from './flightBoard'
+import { MetarStrip } from './MetarStrip'
+import type { FeedStatus } from './useAircraftFeed'
+
+type BoardKind = 'arrivals' | 'departures'
+
+/** Characters per row, split into columns below. */
+const ROW_CHARS = 34
+const TIME_CHARS = BOARD.use24Hour ? 5 : 8
+const FLIGHT_CHARS = 7
+const STATUS_CHARS = 8
+const CITY_CHARS = ROW_CHARS - TIME_CHARS - FLIGHT_CHARS - STATUS_CHARS
+const COLUMNS = [TIME_CHARS, FLIGHT_CHARS, CITY_CHARS, STATUS_CHARS]
+
+/**
+ * Split-flap arrivals and departures boards, side by side, each paging through
+ * its flights. `ref` lets the map keep its center clear of the board.
+ */
+export function Board({ board, status, ref }: { board: BoardState; status: FeedStatus; ref?: Ref<HTMLElement> }) {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), BOARD.pageMs)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <section className="board" ref={ref}>
+      <div className="board-inner" style={BOARD_STYLE}>
+        <MetarStrip />
+        <header className="board-top">
+          <b>{AIRPORT}</b>
+          <Clock />
+        </header>
+
+        <div className="board-panels">
+          <Panel kind="arrivals" rows={board.arrivals} event={board.landing} tick={tick} />
+          <Panel kind="departures" rows={board.departures} event={board.takeoff} tick={tick} />
+        </div>
+
+        <footer className="board-footer">
+          <span className={`board-status${status.error ? ' is-error' : ''}`}>
+            <PollTimer nextPoll={status.nextPoll} />
+            {statusText(status)}
+          </span>
+          <span>adsb.lol / adsb.im</span>
+        </footer>
+      </div>
+    </section>
+  )
+}
+
+/** Characters in the header announcement, e.g. "TAKEOFF AAL1588 AUS". */
+const EVENT_CHARS = 19
+
+function Panel({
+  kind,
+  rows,
+  event,
+  tick,
+}: {
+  kind: BoardKind
+  rows: BoardRow[]
+  event: BoardEvent | null
+  tick: number
+}) {
+  const perPage = BOARD.rowsPerPage
+  const pages = Math.max(1, Math.ceil(rows.length / perPage))
+  const page = tick % pages
+  const visible = rows.slice(page * perPage, (page + 1) * perPage)
+  const isArrivals = kind === 'arrivals'
+  const shownEvent = useUntilExpired(event)
+
+  return (
+    <div className={`panel panel--${kind}`}>
+      <div className="panel-header">
+        <h2>{isArrivals ? 'Arrivals' : 'Departures'}</h2>
+        <span>{String(rows.length).padStart(2, '0')}</span>
+        {/* Flips in when a flight lands / takes off, and flips back to blank after BOARD.eventMs. */}
+        <FlapText
+          text={shownEvent ? `${isArrivals ? 'Landed' : 'Takeoff'} ${shownEvent.flight} ${shownEvent.iata}` : ''}
+          length={EVENT_CHARS}
+          delay={0}
+          className="panel-event"
+        />
+        <span className="panel-page">
+          {page + 1}/{pages}
+        </span>
+      </div>
+
+      <div className="panel-grid panel-columns">
+        <span>{isArrivals ? 'Est' : 'Dep'}</span>
+        <span>Flight</span>
+        <span>{isArrivals ? 'From' : 'To'}</span>
+        <span>Status</span>
+      </div>
+
+      {/* Rows are keyed by position, not flight, so the same tiles flip to new content. */}
+      <ol className="panel-rows">
+        {Array.from({ length: perPage }, (_, i) => (
+          <Row key={i} row={visible[i]} index={i} />
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+function Row({ row, index }: { row: BoardRow | undefined; index: number }) {
+  const { rowStaggerMs, charStaggerMs } = BOARD.flip
+  const texts = row
+    ? [row.time === null ? '--:--' : formatTime(row.time).padStart(TIME_CHARS), row.flight, row.city, row.status]
+    : ['', '', '', '']
+
+  // Each column picks up the cascade where the previous one left off.
+  let offset = 0
+  return (
+    <li className={`panel-grid row${row?.landed ? ' is-landed' : ''}`}>
+      {texts.map((text, col) => {
+        const delay = index * rowStaggerMs + offset * charStaggerMs
+        offset += COLUMNS[col] + 1
+        return <FlapText key={col} text={text} length={COLUMNS[col]} delay={delay} className={col === 3 ? 'row-status' : ''} />
+      })}
+    </li>
+  )
+}
+
+/**
+ * Returns `event` until BOARD.eventMs after it happened, then null. Times itself
+ * rather than waiting for the next data refresh, so the header clears on time.
+ */
+function useUntilExpired(event: BoardEvent | null) {
+  const [expiredAt, setExpiredAt] = useState<number | null>(null)
+  useEffect(() => {
+    if (!event) return
+    const id = setTimeout(() => setExpiredAt(event.at), event.at + BOARD.eventMs - Date.now())
+    return () => clearTimeout(id)
+  }, [event])
+  return event && event.at !== expiredAt ? event : null
+}
+
+/**
+ * Hands the config's colors and column widths to the stylesheet. Set on
+ * .board-inner, where --cell (the tile width) is defined.
+ */
+const BOARD_STYLE = {
+  '--arrival': MAP.arrivalColor,
+  '--departure': MAP.departureColor,
+  '--columns': COLUMNS.map((n) => `calc(${n} * var(--cell))`).join(' '),
+} as CSSProperties
+
+function statusText({ count, updatedAt, error }: FeedStatus) {
+  if (error) return `FEED UNAVAILABLE: ${error}`
+  if (!updatedAt) return 'WAITING FOR DATA'
+  return `${count} AIRBORNE / UPDATED ${formatTime(updatedAt.getTime())}`
+}
+
+function formatTime(ms: number) {
+  return (
+    new Date(ms)
+      .toLocaleTimeString([], { hour: BOARD.use24Hour ? '2-digit' : 'numeric', minute: '2-digit', hour12: !BOARD.use24Hour })
+      // Some locales separate "PM" with a narrow no-break space.
+      .replace(/\s/g, ' ')
+  )
+}
+
+/**
+ * A ring that empties as the next data fetch approaches. Restarts (via its key)
+ * each time a fetch is scheduled, including longer waits after errors.
+ */
+function PollTimer({ nextPoll }: { nextPoll: FeedStatus['nextPoll'] }) {
+  if (nextPoll === null) return null
+  return (
+    <svg className="poll-timer" viewBox="0 0 20 20" key={nextPoll.id} aria-hidden>
+      <circle className="poll-timer-track" cx="10" cy="10" r="8" />
+      <circle
+        className="poll-timer-ring"
+        cx="10"
+        cy="10"
+        r="8"
+        pathLength={1}
+        style={{ animationDuration: `${nextPoll.delayMs}ms` }}
+      />
+    </svg>
+  )
+}
+
+/** Ticks on its own so the board doesn't re-render every second. */
+function Clock() {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return <time className="board-clock">{formatTime(now)}</time>
+}
