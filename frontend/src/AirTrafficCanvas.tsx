@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react'
 import { fetchBasemap, type Basemap } from './basemap'
-import { AIRPORT, CENTER, VIEW_RADIUS_NM } from './config'
+import { AIRPORT, CENTER, MAP, VIEW_RADIUS_NM } from './config'
+import { loadRadar, type Radar } from './radar'
 import { createProjection, createView, drawTracks, LABEL_FONT, renderBackground } from './renderer'
 import type { Tracker } from './tracker'
 
@@ -22,12 +23,13 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
     let height = 0
     let dpr = 1
     let basemap: Basemap | null = null
+    let radar: Radar | null = null
     let view = createView(1, 1, VIEW_RADIUS_NM)
     let project = createProjection(view, CENTER)
     let background = renderBackground(1, 1, 1, view, project, null)
 
     const redrawBackground = () => {
-      background = renderBackground(width, height, dpr, view, project, basemap)
+      background = renderBackground(width, height, dpr, view, project, basemap, radar)
     }
 
     const resize = () => {
@@ -57,6 +59,20 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
       .catch((err) => {
         if (!controller.signal.aborted) console.warn('Basemap unavailable:', err)
       })
+    // Radar is baked into the background too, so it costs nothing per frame;
+    // the background is redrawn whenever a new scan arrives.
+    const refreshRadar = () =>
+      loadRadar(controller.signal)
+        .then((r) => {
+          radar = r
+          redrawBackground()
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) console.warn('Radar unavailable:', err)
+        })
+    const radarTimer = MAP.radar.enabled ? setInterval(refreshRadar, MAP.radar.refreshMs) : undefined
+    if (MAP.radar.enabled) refreshRadar()
+
     // Labels baked into the background need redrawing once the web font arrives.
     document.fonts.load(LABEL_FONT).then(redrawBackground, () => {})
 
@@ -69,6 +85,7 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
 
     return () => {
       controller.abort()
+      clearInterval(radarTimer)
       cancelAnimationFrame(frame)
       observer.disconnect()
     }

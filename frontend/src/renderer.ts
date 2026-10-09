@@ -1,6 +1,7 @@
 import type { Basemap, Line } from './basemap'
 import { MAP } from './config'
 import type { FlightKind } from './flights'
+import type { Radar } from './radar'
 import { leaderLine, newLabelState, updateLabels, type LabelItem, type LabelState } from './labels'
 import type { LatLon, Track } from './tracker'
 
@@ -56,6 +57,7 @@ export function renderBackground(
   view: View,
   project: Projection,
   basemap: Basemap | null,
+  radar: Radar | null = null,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = width * dpr
@@ -73,6 +75,7 @@ export function renderBackground(
   ctx.fillRect(0, 0, width, height)
 
   if (basemap) drawBasemap(ctx, basemap, project)
+  if (radar) drawRadar(ctx, radar, project)
 
   const maxRingNm = maxRadius / pxPerNm
   ctx.strokeStyle = 'rgba(120, 160, 220, 0.12)'
@@ -123,6 +126,32 @@ function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Proje
   ctx.textAlign = 'left'
   ctx.fillText(map.attribution, 12, 12)
   ctx.textBaseline = 'alphabetic'
+}
+
+/**
+ * The radar image is in plain lat/lon, which our projection maps linearly, so
+ * it stretches exactly onto its corners. Scan time goes in the top corner.
+ */
+function drawRadar(ctx: CanvasRenderingContext2D, radar: Radar, project: Projection) {
+  const { west, south, east, north } = radar.bounds
+  const topLeft = project({ lat: north, lon: west })
+  const bottomRight = project({ lat: south, lon: east })
+  ctx.save()
+  ctx.globalAlpha = MAP.radar.opacity
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(radar.image, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y)
+  ctx.restore()
+
+  if (radar.validTime) {
+    const time = radar.validTime.toISOString().slice(11, 16).replace(':', '')
+    ctx.font = LABEL_FONT
+    ctx.textBaseline = 'top'
+    ctx.textAlign = 'left'
+    ctx.fillStyle = 'rgba(160, 180, 215, 0.4)'
+    ctx.fillText(`RADAR ${time}Z`, 12, 30)
+    ctx.textBaseline = 'alphabetic'
+  }
 }
 
 /** Strokes every line as one path, which is far cheaper than stroking each separately. */

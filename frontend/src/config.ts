@@ -104,6 +104,16 @@ export const MAP = {
 
   /** Distance between the range rings, in nautical miles. */
   ringSpacingNm: 10,
+
+  /** Weather radar under the aircraft: NOAA NEXRAD composite (continental US only). */
+  radar: {
+    enabled: true,
+    /** New radar scans arrive about every 5 minutes. */
+    refreshMs: 5 * 60_000,
+    opacity: 0.25,
+    /** Hide the weakest returns (mostly clutter, birds and drizzle) and show only rain and storms. */
+    hideLightEchoes: true,
+  },
 }
 
 // ---- Weather (METAR) --------------------------------------------------------------
