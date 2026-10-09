@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type Ref } from 'react'
 import { AIRPORT, BOARD, MAP } from './config'
 import { FlapText } from './FlapText'
 import type { BoardEvent, BoardRow, BoardState } from './flightBoard'
+import { AtisStrip } from './AtisStrip'
 import { MetarStrip } from './MetarStrip'
 import type { FeedStatus } from './useAircraftFeed'
 
@@ -30,6 +31,7 @@ export function Board({ board, status, ref }: { board: BoardState; status: FeedS
     <section className="board" ref={ref}>
       <div className="board-inner" style={BOARD_STYLE}>
         <MetarStrip />
+        <AtisStrip />
         <header className="board-top">
           <b>{AIRPORT}</b>
           <Clock />

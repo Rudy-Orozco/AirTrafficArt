@@ -113,6 +113,15 @@ export const METAR = {
   refreshMs: 5 * 60_000,
 }
 
+// ---- ATIS ---------------------------------------------------------------------------
+
+export const ATIS = {
+  /** ATIS is reissued hourly and whenever runways or conditions change. */
+  refreshMs: 5 * 60_000,
+  /** How long each sentence of the ATIS text stays up before the next fades in. */
+  lineMs: 6000,
+}
+
 // ---- Arrivals / departures board ---------------------------------------------
 
 export const BOARD = {

@@ -207,6 +207,95 @@ body,
   opacity: 1;
 }
 
+/* ---- ATIS --------------------------------------------------------------------------- */
+
+.atis {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  margin: -0.4em 0 1.5em;
+  font-size: 0.62em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Information letter per broadcast: arrival in the arrival color, departure in the departure color. */
+.atis-code {
+  --accent: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  flex: none;
+  color: var(--accent);
+}
+.atis-code--arr {
+  --accent: var(--arrival);
+}
+.atis-code--dep {
+  --accent: var(--departure);
+}
+
+.atis-type {
+  font: 600 0.85em / 1 var(--sans);
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+}
+
+.atis-code .flap {
+  width: auto;
+  height: auto;
+  line-height: 1;
+  font-size: 1.6em;
+  font-weight: 800;
+}
+
+/* Inactive broadcasts' letters dim while another broadcast's text is showing. */
+.atis-code {
+  opacity: 0.4;
+  transition: opacity 400ms;
+}
+
+.atis-code.is-active {
+  opacity: 1;
+}
+
+/* A window onto the sentence list: the current one centered, the previous and
+   next peeking in above and below, fading out toward the edges. */
+.atis-window {
+  flex: 1;
+  min-width: 0;
+  height: 4.6em;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, transparent, black 32%, black 68%, transparent);
+}
+
+.atis-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  will-change: transform;
+}
+
+.atis-lines li {
+  padding: 0.25em 0;
+  line-height: 1.35;
+  color: var(--text-dim);
+  opacity: 0.6;
+  transition:
+    color 500ms,
+    opacity 500ms;
+}
+
+.atis-lines li.is-current {
+  color: var(--text-mid);
+  opacity: 1;
+}
+
+.atis-count {
+  flex: none;
+  color: var(--text-dim);
+}
+
 .board-top {
   display: flex;
   align-items: baseline;
