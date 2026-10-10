@@ -159,7 +159,7 @@ export const SETTING_TABS: { title: string; groups: SettingGroup[] }[] = [
           { path: 'DIORAMA.boxHeight', label: 'Box height', type: 'range', min: 0.05, max: 0.5, step: 0.01 },
           { path: 'DIORAMA.buildingHeightScale', label: 'Building height', hint: 'Times real height', type: 'range', min: 1, max: 10, step: 0.5, unit: '×' },
         ],
-        action: { label: 'Reset position, size and angle', run: resetDioramaPlacement },
+        action: { label: 'Reset position, size and angle', run: () => resetDioramaPlacement() },
       },
       {
         title: 'Aircraft',
@@ -232,8 +232,9 @@ const ALL_SETTINGS = SETTING_TABS.flatMap((tab) => tab.groups.flatMap((g) => g.s
 /** Sent to put the 3D view back in its corner at its starting size and angle. */
 export const RESET_DIORAMA_EVENT = 'airportDiorama:reset'
 
-export function resetDioramaPlacement() {
-  window.dispatchEvent(new Event(RESET_DIORAMA_EVENT))
+/** Back to its corner at its starting size; the angle too, unless `keepAngle`. */
+export function resetDioramaPlacement({ keepAngle = false } = {}) {
+  window.dispatchEvent(new CustomEvent(RESET_DIORAMA_EVENT, { detail: { keepAngle } }))
 }
 
 /** Sent to put the 3D map's camera back to its starting view. */

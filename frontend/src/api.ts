@@ -42,15 +42,56 @@ interface RawAircraft {
   category?: string
 }
 
+/**
+ * Where aircraft positions come from, in order of preference. Both are free
+ * community networks with the same readsb JSON, relayed by the app's server
+ * (api-routes.mjs). Their rate limits are per IP address, which may be shared
+ * (e.g. a cloud dev machine), so a 429 can come however slowly we poll.
+ */
+const SOURCES = [
+  { name: 'adsb.lol', path: '/api/aircraft' },
+  { name: 'adsb.fi', path: '/api/aircraft-adsbfi' },
+]
+/** After a 429, leave that source alone for this long. */
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000
+const restingUntil = new Map<string, number>()
+let currentSource = SOURCES[0].name
+
+/** The source the latest aircraft came from, for crediting it. */
+export function aircraftSource() {
+  return currentSource
+}
+
+/**
+ * Fetches from the first source that isn't resting after a rate limit, moving
+ * on to the next if one fails. If every source is resting, tries them anyway.
+ */
 export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
   const query = new URLSearchParams({ lat: `${CENTER.lat}`, lon: `${CENTER.lon}`, radius: `${FETCH_RADIUS_NM}` })
-  const res = await fetch(`/api/aircraft?${query}`, {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(FEED.requestTimeoutMs)]),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const now = Date.now()
+  const awake = SOURCES.filter((s) => (restingUntil.get(s.name) ?? 0) <= now)
+  let lastError: unknown = null
+  for (const source of awake.length ? awake : SOURCES) {
+    try {
+      const res = await fetch(`${source.path}?${query}`, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(FEED.requestTimeoutMs)]),
+      })
+      if (res.status === 429) restingUntil.set(source.name, Date.now() + RATE_LIMIT_COOLDOWN_MS)
+      if (!res.ok) throw new Error(`${source.name}: HTTP ${res.status}`)
+      const aircraft = parseAircraft(await res.json())
+      currentSource = source.name
+      return aircraft
+    } catch (err) {
+      if (signal.aborted) throw err
+      lastError = err
+    }
+  }
+  throw lastError
+}
 
-  // adsb.lol calls the list "ac"; a local readsb aircraft.json calls it "aircraft".
-  const data = (await res.json()) as { ac?: RawAircraft[]; aircraft?: RawAircraft[] }
+function parseAircraft(json: unknown): Aircraft[] {
+  // adsb.lol calls the list "ac"; adsb.fi and a local readsb aircraft.json call it "aircraft".
+  const data = json as { ac?: RawAircraft[]; aircraft?: RawAircraft[] }
   const list = data.ac ?? data.aircraft ?? []
 
   return list

@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react'
 import { DIORAMA, MAP } from './config'
+import { desktop } from './desktop'
 import {
   getSetting,
-  LOCK_SETTING,
   needsReload,
+  resetDioramaPlacement,
   resetSettings,
   setSetting,
   SETTING_TABS,
@@ -21,6 +22,7 @@ import {
 export function SettingsPanel() {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState(loadTab)
+  const fullScreen = useFullScreen()
   useSettingsVersion()
   const activeTab = SETTING_TABS[tab] ?? SETTING_TABS[0]
 
@@ -42,11 +44,34 @@ export function SettingsPanel() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open])
 
-  const locked = DIORAMA.locked
   const is3d = MAP.view === '3d'
   const terrain = MAP.terrain
   return (
     <>
+      {desktop && <ZoomControl />}
+      {DIORAMA.enabled && (
+        <button
+          type="button"
+          className="toolbar-button place-button"
+          aria-label="Bring back the airport view"
+          title="Bring the 3D airport view back to its corner (keeps its angle)"
+          onClick={() => resetDioramaPlacement({ keepAngle: true })}
+        >
+          <PlaceIcon />
+        </button>
+      )}
+      {document.fullscreenEnabled && (
+        <button
+          type="button"
+          className={`toolbar-button fullscreen-button${fullScreen ? ' is-on' : ''}`}
+          aria-label={fullScreen ? 'Exit full screen' : 'Full screen'}
+          aria-pressed={fullScreen}
+          title={fullScreen ? 'Exit full screen (Esc)' : 'Full screen'}
+          onClick={toggleFullScreen}
+        >
+          <FullScreenIcon exit={fullScreen} />
+        </button>
+      )}
       <button
         type="button"
         className={`toolbar-button terrain-button${terrain ? ' is-on' : ''}`}
@@ -65,16 +90,6 @@ export function SettingsPanel() {
         onClick={() => setSetting(VIEW_SETTING, is3d ? '2d' : '3d')}
       >
         {is3d ? '2D' : '3D'}
-      </button>
-      <button
-        type="button"
-        className={`toolbar-button lock-button${locked ? ' is-locked' : ''}`}
-        aria-label={locked ? 'Unlock 3D view' : 'Lock 3D view'}
-        aria-pressed={locked}
-        title={locked ? 'Unlock the 3D view' : 'Lock the 3D view in place'}
-        onClick={() => setSetting(LOCK_SETTING, !locked)}
-      >
-        <LockIcon locked={locked} />
       </button>
       <button
         type="button"
@@ -136,6 +151,49 @@ export function SettingsPanel() {
       )}
     </>
   )
+}
+
+/**
+ * − 100% + : page zoom, like Ctrl+scroll (desktop app only; a web page can't
+ * change the browser's zoom). Clicking the percentage goes back to 100%.
+ */
+function ZoomControl() {
+  const [factor, setFactor] = useState(1)
+  useEffect(() => {
+    desktop!.zoomFactor().then(setFactor, () => {})
+    return desktop!.onZoom(setFactor)
+  }, [])
+  const zoom = (direction: number) => desktop!.zoom(direction).then(setFactor, () => {})
+  const percent = `${Math.round(factor * 100)}%`
+  return (
+    <div className="zoom-control" role="group" aria-label="Page zoom">
+      <button type="button" aria-label="Zoom out" title="Zoom out (Ctrl+minus, Ctrl+scroll)" onClick={() => zoom(-1)}>
+        −
+      </button>
+      <button type="button" className="zoom-reset" aria-label={`Zoom ${percent}, reset to 100%`} title="Reset to 100% (Ctrl+0)" onClick={() => zoom(0)}>
+        {percent}
+      </button>
+      <button type="button" aria-label="Zoom in" title="Zoom in (Ctrl+plus, Ctrl+scroll)" onClick={() => zoom(1)}>
+        +
+      </button>
+    </div>
+  )
+}
+
+/** Whether the page is full screen, kept up to date (Esc can leave it too). */
+function useFullScreen() {
+  const [on, setOn] = useState(() => document.fullscreenElement !== null)
+  useEffect(() => {
+    const update = () => setOn(document.fullscreenElement !== null)
+    document.addEventListener('fullscreenchange', update)
+    return () => document.removeEventListener('fullscreenchange', update)
+  }, [])
+  return on
+}
+
+function toggleFullScreen() {
+  const request = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()
+  request.catch((err) => console.warn('Full screen unavailable:', err))
 }
 
 /** The last tab opened, remembered in this browser. */
@@ -218,20 +276,36 @@ function formatNumber(n: number) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, '')
 }
 
-function MountainIcon() {
+/** A screen with the airport view's spot in its top-right corner, and an arrow into it. */
+function PlaceIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 19 9 8l4 6 3-4 6 9z" />
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <rect x="13" y="7" width="5" height="5" rx="1" />
+      <path d="M6 17l5-5M11 12H7.5M11 12v3.5" />
     </svg>
   )
 }
 
-function LockIcon({ locked }: { locked: boolean }) {
+/** Corner brackets pointing out (enter) or in (exit). */
+function FullScreenIcon({ exit }: { exit: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <rect x="5" y="11" width="14" height="10" rx="2" />
-      {/* Open: the shackle swings up and off to the left. */}
-      <path d={locked ? 'M8 11V7a4 4 0 0 1 8 0v4' : 'M8 11V7a4 4 0 0 1 7.5-1.9'} />
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+      <path
+        d={
+          exit
+            ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5'
+            : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'
+        }
+      />
+    </svg>
+  )
+}
+
+function MountainIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 19 9 8l4 6 3-4 6 9z" />
     </svg>
   )
 }

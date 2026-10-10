@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchAircraft } from './api'
+import { aircraftSource, fetchAircraft } from './api'
 import { FlightBoard, type BoardState } from './flightBoard'
 import { FEED } from './config'
 import { FlightClassifier } from './flights'
@@ -14,6 +14,8 @@ export interface FeedStatus {
   error: string | null
   /** The next scheduled fetch: a unique id and how long until it runs, including any backoff after errors. */
   nextPoll: { id: number; delayMs: number } | null
+  /** Which network the aircraft came from (adsb.lol, or adsb.fi while adsb.lol is rate-limiting). */
+  source: string
 }
 
 export interface Feed {
@@ -27,7 +29,7 @@ export interface Feed {
  */
 export function useAircraftFeed(tracker: Tracker, ground: GroundTracker): Feed {
   const [feed, setFeed] = useState<Feed>({
-    status: { count: 0, updatedAt: null, error: null, nextPoll: null },
+    status: { count: 0, updatedAt: null, error: null, nextPoll: null, source: aircraftSource() },
     board: { arrivals: [], departures: [], landing: null, takeoff: null },
   })
 
@@ -59,7 +61,7 @@ export function useAircraftFeed(tracker: Tracker, ground: GroundTracker): Feed {
         const count = flights.filter((f) => !f.onGround).length
         const nextPoll = scheduleNext()
         setFeed({
-          status: { count, updatedAt: new Date(), error: null, nextPoll },
+          status: { count, updatedAt: new Date(), error: null, nextPoll, source: aircraftSource() },
           board: board.update(flights, Date.now()),
         })
       } catch (err) {

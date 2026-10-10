@@ -95,36 +95,221 @@ body,
   mask-repeat: no-repeat;
 }
 
-/* Move (caption strip) and resize (corner) handles show while hovering. */
+/* While hovering: a faint frame shows the panel's edges, with a grip to move it,
+   corner handles to resize it and a button to reset the view. */
+.diorama::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  pointer-events: none;
+  transition: border-color 0.2s;
+}
+
+.diorama:hover::after {
+  border-color: var(--line);
+}
+
 .diorama-move,
-.diorama-resize {
+.diorama-resize,
+.diorama-reset {
   position: absolute;
   opacity: 0;
   transition: opacity 0.2s;
 }
 
 .diorama:hover .diorama-move,
-.diorama:hover .diorama-resize {
+.diorama:hover .diorama-resize,
+.diorama:hover .diorama-reset {
   opacity: 1;
 }
 
+/* A strip along every edge (between the corner handles) moves the panel; the top one shows a grip. */
 .diorama-move {
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 20px;
+  display: grid;
+  place-items: center;
   cursor: move;
-  border-top: 2px solid var(--line);
 }
 
-.diorama-resize {
-  right: 0;
+.diorama-move.is-top,
+.diorama-move.is-bottom {
+  left: 22px;
+  right: 22px;
+  height: 18px;
+}
+
+.diorama-move.is-top {
+  top: 0;
+}
+
+.diorama-move.is-bottom {
   bottom: 0;
+}
+
+.diorama-move.is-left,
+.diorama-move.is-right {
+  top: 22px;
+  bottom: 22px;
   width: 14px;
-  height: 14px;
+}
+
+.diorama-move.is-left {
+  left: 0;
+}
+
+.diorama-move.is-right {
+  right: 0;
+}
+
+/* Hovering an edge highlights it, so it's clear the edges move the panel. */
+.diorama-move:hover {
+  background: rgb(220 230 245 / 0.06);
+}
+
+.diorama-grip {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--text-dim);
+}
+
+.diorama-move:hover .diorama-grip {
+  background: var(--text);
+}
+
+/* L-shaped corner handles, with a bigger area to grab than they show. */
+.diorama-resize {
+  width: 22px;
+  height: 22px;
+}
+
+.diorama-resize::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 0 solid var(--text-dim);
+}
+
+.diorama-resize:hover::before {
+  border-color: var(--text);
+}
+
+.diorama-resize.is-nw {
+  top: 0;
+  left: 0;
   cursor: nwse-resize;
-  border-right: 2px solid var(--text-dim);
-  border-bottom: 2px solid var(--text-dim);
+}
+
+.diorama-resize.is-nw::before {
+  top: 3px;
+  left: 3px;
+  border-width: 2px 0 0 2px;
+}
+
+.diorama-resize.is-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.diorama-resize.is-ne::before {
+  top: 3px;
+  right: 3px;
+  border-width: 2px 2px 0 0;
+}
+
+.diorama-resize.is-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.diorama-resize.is-sw::before {
+  bottom: 3px;
+  left: 3px;
+  border-width: 0 0 2px 2px;
+}
+
+.diorama-resize.is-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.diorama-resize.is-se::before {
+  bottom: 3px;
+  right: 3px;
+  border-width: 0 2px 2px 0;
+}
+
+.diorama-reset {
+  position: static;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  font: 14px / 1 var(--sans);
+  cursor: pointer;
+}
+
+.diorama-reset:hover {
+  color: var(--text);
+}
+
+/* Reset and lock buttons in a column near the top-right corner, moved by script to
+   stay on screen when that corner is past the window's edge. */
+.diorama-buttons {
+  position: absolute;
+  top: 26px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Lock, under the reset button. Shown on hover like the other controls. */
+.diorama-lock {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.diorama-lock svg {
+  width: 13px;
+  height: 13px;
+}
+
+.diorama:hover .diorama-lock,
+.diorama.is-pointer-over .diorama-lock,
+.diorama-lock:hover,
+.diorama-lock:focus-visible {
+  opacity: 1;
+}
+
+.diorama-lock:hover {
+  color: var(--text);
+}
+
+/* While locked the panel lets clicks through, but its lock still answers, so it can be found
+   by hovering its spot and clicked to unlock. */
+.diorama.is-locked .diorama-lock {
+  pointer-events: auto;
+  border-color: var(--text-dim);
+  color: var(--text);
 }
 
 /* Landscape: the board covers the right, so sit just left of it. */
@@ -132,7 +317,8 @@ body,
   .diorama,
   .diorama-backdrop {
     right: min(54%, 880px);
-    width: min(24vw, 46vh);
+    /* The map is narrower than on a portrait screen; leave it room. */
+    width: min(21vw, 40vh);
   }
 }
 
@@ -162,12 +348,8 @@ body,
   right: 12px;
 }
 
-.lock-button {
-  right: 54px;
-}
-
 .view-button {
-  right: 96px;
+  right: 54px;
   font: 600 11px var(--sans);
   letter-spacing: 0.04em;
 }
@@ -187,17 +369,59 @@ body,
 }
 
 .terrain-button {
+  right: 96px;
+}
+
+.fullscreen-button {
   right: 138px;
+}
+
+.place-button {
+  right: 180px;
+}
+
+/* − 100% + page zoom (desktop app), left of the round buttons. */
+.zoom-control {
+  position: absolute;
+  top: 12px;
+  right: 222px;
+  z-index: 3;
+  display: flex;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: rgb(3 5 10 / 0.6);
+  overflow: hidden;
+}
+
+.zoom-control button {
+  min-width: 30px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 500 16px / 1 var(--sans);
+  cursor: pointer;
+}
+
+.zoom-control button:hover {
+  color: var(--text);
+  background: rgb(220 230 245 / 0.06);
+}
+
+.zoom-control .zoom-reset {
+  min-width: 46px;
+  font: 500 11px / 1 var(--mono);
+  border-inline: 1px solid var(--line);
 }
 
 .toolbar-button:hover,
 .settings-button.is-open,
-.lock-button.is-locked,
-.terrain-button.is-on {
+.terrain-button.is-on,
+.fullscreen-button.is-on {
   color: var(--text);
 }
 
-.lock-button.is-locked,
 .terrain-button.is-on {
   border-color: var(--text-dim);
 }
@@ -208,7 +432,9 @@ body,
 }
 
 .diorama.is-locked .diorama-move,
-.diorama.is-locked .diorama-resize {
+.diorama.is-locked .diorama-resize,
+.diorama.is-locked .diorama-reset,
+.diorama.is-locked::after {
   display: none;
 }
 
@@ -449,7 +675,8 @@ body,
 /* Landscape windows: the board floats over the right side instead. */
 @media (min-aspect-ratio: 1/1) {
   .app {
-    --board-max-font: 2.2vh;
+    /* Sized so weather, ATIS and both boards fit the height, even on a 768px-tall laptop. */
+    --board-max-font: 1.8vh;
   }
 
   .board {
@@ -459,8 +686,12 @@ body,
     width: min(54%, 880px);
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding-top: 0;
+    /* Centered, but never pushed off the top if it's taller than the screen. */
+    justify-content: safe center;
+    overflow-y: auto;
+    /* Clear of the toolbar buttons in the top-right corner. */
+    padding-top: 56px;
+    padding-bottom: 8px;
     padding-left: 10vw;
     background: linear-gradient(to right, rgb(3 5 10 / 0), rgb(3 5 10 / 0.82) 6vw, rgb(3 5 10 / 0.95) 10vw);
   }

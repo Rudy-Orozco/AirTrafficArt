@@ -52,7 +52,7 @@ export function Board({ board, status, ref }: { board: BoardState; status: FeedS
             <PollTimer nextPoll={status.nextPoll} />
             {statusText(status)}
           </span>
-          <span>adsb.lol / adsb.im</span>
+          <span>{status.source} / adsb.im</span>
         </footer>
       </div>
     </section>
