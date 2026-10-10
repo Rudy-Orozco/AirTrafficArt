@@ -14,7 +14,7 @@ import time
 
 from build_basemap import AIRPORTS_FILE, OUT_DIR, ROOT, bounding_box, geometry, overpass, simplify, stitch
 
-# Big enough for DFW's ~4 nm of runways; matches DIORAMA.radiusNm in src/config.ts.
+# Big enough for DFW's ~4 nm of runways; matches DIORAMA.radiusNm in src/config/config.ts.
 RADIUS_NM = 2.6
 # ~2 m: the layout is drawn much larger than the basemap, so keep more detail.
 SIMPLIFY_TOLERANCE_DEG = 0.00002

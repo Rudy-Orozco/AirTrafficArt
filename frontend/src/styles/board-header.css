@@ -1,0 +1,68 @@
+/* The airport's logo, over the map in the top-left corner, on a white plate like a sign. */
+.airport-logo {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  z-index: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+  height: 72px;
+  max-width: min(320px, 40vw);
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
+}
+
+.airport-logo img {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+/* Local time, right of the airport name: a small label, the time, then zone and date. */
+.board-clock {
+  text-align: right;
+}
+
+.board-clock-label {
+  font: 600 0.55em / 1.4 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.board-clock-time {
+  display: block;
+  font: 300 2.4em / 1 var(--sans);
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.02em;
+}
+
+.board-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6em;
+}
+
+/* Too narrow for two boards side by side: stack them. */
+@container (max-width: 760px) {
+  .board-inner {
+    font-size: clamp(9px, min(2.9cqi, var(--board-max-font)), 22px);
+  }
+
+  .board-panels {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tighter weather cells so they still fit on one line. */
+  .metar-cell {
+    padding: 0 0.6em;
+  }
+
+  .metar-cat {
+    padding-right: 0.6em;
+  }
+}
+

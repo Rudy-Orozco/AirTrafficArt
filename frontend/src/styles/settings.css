@@ -1,0 +1,337 @@
+/* ---- Settings: gear button and panel, top right ------------------------------------ */
+
+/* Round buttons along the top-right corner: lock, then settings. */
+.toolbar-button {
+  position: absolute;
+  top: 12px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    transform 0.3s;
+}
+
+.settings-button {
+  right: 12px;
+}
+
+.view-button {
+  right: 54px;
+  font: 600 11px var(--sans);
+  letter-spacing: 0.04em;
+}
+
+/* The 3D map takes drags (orbit/pan/zoom); its label layer lets them through. */
+.radar.map3d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map3d:active {
+  cursor: grabbing;
+}
+
+.radar.map3d-labels {
+  pointer-events: none;
+}
+
+.terrain-button {
+  right: 96px;
+}
+
+.fullscreen-button {
+  right: 138px;
+}
+
+.place-button {
+  right: 180px;
+}
+
+/* − 100% + page zoom (desktop app), left of the round buttons. */
+.zoom-control {
+  position: absolute;
+  top: 12px;
+  right: 222px;
+  z-index: 3;
+  display: flex;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: rgb(3 5 10 / 0.6);
+  overflow: hidden;
+}
+
+.zoom-control button {
+  min-width: 30px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: 500 16px / 1 var(--sans);
+  cursor: pointer;
+}
+
+.zoom-control button:hover {
+  color: var(--text);
+  background: rgb(220 230 245 / 0.06);
+}
+
+.zoom-control .zoom-reset {
+  min-width: 46px;
+  font: 500 11px / 1 var(--mono);
+  border-inline: 1px solid var(--line);
+}
+
+.toolbar-button:hover,
+.settings-button.is-open,
+.terrain-button.is-on,
+.fullscreen-button.is-on {
+  color: var(--text);
+}
+
+.terrain-button.is-on {
+  border-color: var(--text-dim);
+}
+
+/* Locked: clicks go straight through to the map, and the handles stay hidden. */
+.diorama.is-locked {
+  pointer-events: none;
+}
+
+.diorama.is-locked .diorama-move,
+.diorama.is-locked .diorama-resize,
+.diorama.is-locked .diorama-reset,
+.diorama.is-locked::after {
+  display: none;
+}
+
+.settings-button.is-open {
+  transform: rotate(60deg);
+}
+
+.settings-panel {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 68px);
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(8 12 20 / 0.96);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+  color: var(--text);
+  font: 400 13px / 1.35 var(--sans);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-close {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  color: var(--text);
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.settings-tab {
+  flex: none;
+  padding: 7px 10px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font: 500 12px var(--sans);
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.is-active {
+  border-bottom-color: #4ea2ff;
+  color: var(--text);
+}
+
+.settings-body {
+  overflow-y: auto;
+  padding: 4px 16px 12px;
+}
+
+/* Each group is a card, so sections read as separate blocks. */
+.settings-group {
+  margin-top: 12px;
+  padding: 2px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(220 230 245 / 0.03);
+}
+
+.settings-group h3 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.settings-row label small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-range input {
+  width: 92px;
+  accent-color: #4ea2ff;
+}
+
+.settings-range output {
+  min-width: 46px;
+  text-align: right;
+  font: 400 12px var(--mono);
+  color: var(--text-dim);
+}
+
+.settings-row select {
+  max-width: 190px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--row);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-row input[type='color'] {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+/* A toggle switch drawn from a plain checkbox. */
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: rgb(220 230 245 / 0.18);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.2s;
+}
+
+.settings-switch:checked {
+  background: #4ea2ff;
+}
+
+.settings-switch:checked::after {
+  transform: translateX(14px);
+}
+
+.settings-action {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-action:hover {
+  background: rgb(220 230 245 / 0.08);
+}
+
+.settings-action.is-primary {
+  border-color: #4ea2ff;
+  background: #4ea2ff;
+  color: #03050a;
+  font-weight: 600;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 16px 12px;
+  border-top: 1px solid var(--line);
+}
+

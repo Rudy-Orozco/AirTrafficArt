@@ -1,0 +1,58 @@
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root {
+  --bg: #03050a;
+  --row: #0e1218;
+  --line: rgba(220, 230, 245, 0.16);
+  --text: #f1f3f6;
+  --text-dim: rgba(220, 228, 240, 0.45);
+  --error: #ff6b57;
+  /* Inter for headings and the clock; JetBrains Mono for flight information. */
+  --sans: 'Inter Variable', system-ui, sans-serif;
+  --mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+/* Registered so it resolves to pixels once and every descendant shares the same
+   tile width, whatever its own font size (keeps headers aligned with tiles). */
+@property --cell {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  /* Cap the board's text so it stays compact on a portrait screen. */
+  --board-max-font: 1.2vh;
+}
+
+.radar {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The 2D map can be dragged to pan. */
+.radar.map2d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map2d.is-dragging {
+  cursor: grabbing;
+}
+

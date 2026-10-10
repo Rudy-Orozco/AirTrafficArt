@@ -1,0 +1,146 @@
+/* ---- Startup screen ---------------------------------------------------------- */
+
+/* Over the map and board, under the toolbar and settings (z-index 3). */
+.boot {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(3 5 10 / 0.9);
+  backdrop-filter: blur(6px);
+  transition: opacity 600ms ease;
+}
+
+.boot.is-hiding {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot-card {
+  box-sizing: border-box;
+  width: min(100%, 420px);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.boot-title {
+  font-family: var(--sans);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.boot-airport {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
+
+.boot-heading {
+  margin-top: 4px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+.boot-steps {
+  list-style: none;
+  margin: 24px 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.boot-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.boot-step.is-pending {
+  color: var(--text-dim);
+}
+
+.boot-step-mark {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+}
+
+.boot-step.is-active .boot-step-mark {
+  border-color: var(--text);
+  border-right-color: transparent;
+  animation: boot-spin 0.8s linear infinite;
+}
+
+.boot-step.is-done .boot-step-mark {
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.boot-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.boot-bar-fill {
+  height: 100%;
+  background: var(--text);
+  transition: width 200ms linear;
+}
+
+.boot-numbers {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.boot-error {
+  margin-top: 16px;
+  color: var(--error);
+}
+
+.boot-note {
+  margin: 16px 0 0;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.boot-skip {
+  margin-top: 20px;
+  padding: 6px 12px;
+  font: inherit;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.boot-skip:hover {
+  color: var(--text);
+}
+
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-step.is-active .boot-step-mark {
+    animation: none;
+  }
+}

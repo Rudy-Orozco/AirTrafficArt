@@ -21,7 +21,7 @@ AIRPORTS_FILE = ROOT / "frontend" / "airports.json"
 OUT_DIR = ROOT / "frontend" / "public" / "basemaps"
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# Cover a 9:16 portrait screen's corners, matching FETCH_RADIUS_NM in src/config.ts.
+# Cover a 9:16 portrait screen's corners, matching FETCH_RADIUS_NM in src/config/config.ts.
 RADIUS_FACTOR = 2.1
 # ~80 m: well under one pixel at typical zoom levels, so simplification is invisible.
 SIMPLIFY_TOLERANCE_DEG = 0.0008

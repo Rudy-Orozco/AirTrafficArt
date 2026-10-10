@@ -1,0 +1,183 @@
+/* ---- Panel -------------------------------------------------------------------- */
+
+.panel {
+  --accent: var(--arrival);
+  min-width: 0;
+}
+
+.panel--departures {
+  --accent: var(--departure);
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 3px solid var(--accent);
+}
+
+.panel-header h2 {
+  margin: 0;
+  font: 800 1.35em / 1 var(--sans);
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.panel-header span {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.panel-event {
+  margin-left: auto;
+  align-self: center;
+  color: var(--accent);
+  font-size: 0.9em;
+}
+
+.panel-event .flap {
+  /* Tighter than the rows so the header still fits "DEPARTURES", the count and the page. */
+  width: calc(var(--cell) * 0.82);
+  height: auto;
+  line-height: 1;
+}
+
+.panel-header .panel-page {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: var(--columns);
+  column-gap: var(--cell);
+}
+
+.panel-columns {
+  margin: 0.6em 0 0.4em;
+  /* Line up with the text inside the rows' padding (0.6em of the row font). */
+  padding: 0 calc(var(--cell) * 0.75);
+  font: 600 0.6em / 1 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.panel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Rows ------------------------------------------------------------------------- */
+
+/* Each row is one solid bar; the characters on it still flip individually. */
+.row {
+  padding: 0 calc(var(--cell) * 0.75);
+  background: var(--row);
+}
+
+.flaps {
+  display: flex;
+}
+
+.flap {
+  flex: none;
+  width: var(--cell);
+  height: 1.45em;
+  line-height: 1.45em;
+  text-align: center;
+  font-weight: 600;
+}
+
+.row-status .flap {
+  color: var(--accent);
+}
+
+.row.is-landed .row-status .flap {
+  color: var(--text);
+}
+
+/* ---- Footer ---------------------------------------------------------------------- */
+
+.board-footer {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.1em;
+  padding: 0.7em 0 1.1em;
+  border-top: 1px solid var(--line);
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+.board-footer .is-error {
+  color: var(--error);
+}
+
+.board-status {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+}
+
+/* Countdown to the next data fetch: the ring empties as it approaches. */
+.poll-timer {
+  width: 1.5em;
+  height: 1.5em;
+  transform: rotate(-90deg);
+}
+
+.poll-timer circle {
+  fill: none;
+  stroke-width: 2.5;
+}
+
+.poll-timer-track {
+  stroke: var(--line);
+}
+
+.poll-timer-ring {
+  stroke: var(--text);
+  stroke-dasharray: 1;
+  animation: poll-countdown linear both;
+}
+
+.is-error .poll-timer-ring {
+  stroke: var(--error);
+}
+
+/* A quarter arc going round while a request is on its way. */
+.poll-timer-spin {
+  stroke: var(--text);
+  stroke-dasharray: 0.25 0.75;
+  transform-origin: 10px 10px;
+  animation: poll-spin 0.9s linear infinite;
+}
+
+@keyframes poll-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poll-timer-spin {
+    animation-duration: 3s;
+  }
+}
+
+@keyframes poll-countdown {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 1;
+  }
+}
+

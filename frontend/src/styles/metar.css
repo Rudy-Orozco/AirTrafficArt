@@ -1,0 +1,184 @@
+/* ---- Weather (METAR) -------------------------------------------------------------- */
+
+.metar {
+  margin-bottom: 1.5em;
+  text-transform: uppercase;
+}
+
+/* Readings in a centered row of cells: small label over value, thin dividers between. */
+.metar-cells {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  row-gap: 0.7em;
+}
+
+.metar-cat {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding-right: 1.1em;
+  font: 800 1.15em / 1 var(--sans);
+  letter-spacing: 0.04em;
+}
+
+.metar-dot {
+  width: 0.45em;
+  height: 0.45em;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0.6em currentColor;
+}
+
+/* Standard flight category colors. */
+.metar-cat--vfr {
+  color: #3ecf6e;
+}
+.metar-cat--mvfr {
+  color: #4ea2ff;
+}
+.metar-cat--ifr {
+  color: #ff5a4f;
+}
+.metar-cat--lifr {
+  color: #d65cff;
+}
+
+.metar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0 1.1em;
+  border-left: 1px solid var(--line);
+}
+
+/* Line icons above each reading; .filled parts (pennants, sky cover) are solid. */
+.metar-icon {
+  width: 1.7em;
+  height: 1.7em;
+  margin-bottom: 0.15em;
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.metar-icon .filled {
+  fill: var(--text);
+  stroke: none;
+}
+
+.metar-icon .thick {
+  stroke-width: 2.2;
+}
+
+/* Wind: streaks drift downwind and fade (the barb's group is already rotated, so
+   translateY is downwind). --wind-flow is set from the wind speed. */
+.wind-streaks {
+  stroke-width: 1.1;
+}
+
+.wind-streaks line {
+  opacity: 0;
+  animation: wind-drift var(--wind-flow, 1.5s) linear infinite;
+}
+
+/* Gusts: the streaks swell now and then. */
+.wind-streaks.is-gusting {
+  animation: wind-gust 3.2s ease-in-out infinite;
+}
+
+.wind-variable {
+  transform-origin: 12px 12px;
+  animation: wind-turn 12s linear infinite;
+}
+
+@keyframes wind-drift {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.75;
+  }
+  to {
+    transform: translateY(5px);
+    opacity: 0;
+  }
+}
+
+@keyframes wind-gust {
+  0%,
+  60%,
+  100% {
+    stroke-width: 1.1;
+  }
+  75% {
+    stroke-width: 2;
+  }
+}
+
+@keyframes wind-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wind-streaks,
+  .wind-streaks line,
+  .wind-variable {
+    animation: none;
+  }
+
+  .wind-streaks line {
+    opacity: 0.5;
+  }
+}
+
+.metar-label {
+  font: 600 0.5em / 1 var(--sans);
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
+}
+
+.metar-value {
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.metar-raw {
+  display: flex;
+  justify-content: center;
+  gap: 1.2em;
+  margin-top: 0.9em;
+  font-size: 0.6em;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.metar-raw-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
+.metar-age {
+  flex: none;
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.metar-age.is-stale {
+  color: var(--error);
+  opacity: 1;
+}
+

@@ -1,0 +1,276 @@
+/* ---- 3D airport view: top-right corner of the map ------------------------------ */
+
+/* The panel and its backdrop share a placement (dragging sets both inline). */
+.diorama,
+.diorama-backdrop {
+  position: absolute;
+  /* Below the settings button. */
+  top: calc(1.5vh + 40px);
+  right: 2vw;
+  width: 40vw;
+  aspect-ratio: 1;
+}
+
+.diorama {
+  /* Above the board, so it can be dragged over the gradient at the bottom. */
+  z-index: 1;
+  touch-action: none;
+  user-select: none;
+}
+
+.diorama canvas {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.diorama.is-rotating canvas {
+  cursor: grabbing;
+}
+
+/* WebGL aircraft, over the 2D scene; drags pass through to it. */
+.diorama canvas.diorama-models {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Below the board (no z-index, and earlier in the page), so only the map is
+   blurred. Masked to the box's outline from script as the view turns. */
+.diorama-backdrop {
+  pointer-events: none;
+  /* Hidden until the first outline arrives. */
+  mask-image: linear-gradient(transparent, transparent);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+
+/* While hovering: a faint frame shows the panel's edges, with a grip to move it,
+   corner handles to resize it and a button to reset the view. */
+.diorama::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  pointer-events: none;
+  transition: border-color 0.2s;
+}
+
+.diorama:hover::after {
+  border-color: var(--line);
+}
+
+.diorama-move,
+.diorama-resize,
+.diorama-reset {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.diorama:hover .diorama-move,
+.diorama:hover .diorama-resize,
+.diorama:hover .diorama-reset {
+  opacity: 1;
+}
+
+/* A strip along every edge (between the corner handles) moves the panel; the top one shows a grip. */
+.diorama-move {
+  display: grid;
+  place-items: center;
+  cursor: move;
+}
+
+.diorama-move.is-top,
+.diorama-move.is-bottom {
+  left: 22px;
+  right: 22px;
+  height: 18px;
+}
+
+.diorama-move.is-top {
+  top: 0;
+}
+
+.diorama-move.is-bottom {
+  bottom: 0;
+}
+
+.diorama-move.is-left,
+.diorama-move.is-right {
+  top: 22px;
+  bottom: 22px;
+  width: 14px;
+}
+
+.diorama-move.is-left {
+  left: 0;
+}
+
+.diorama-move.is-right {
+  right: 0;
+}
+
+/* Hovering an edge highlights it, so it's clear the edges move the panel. */
+.diorama-move:hover {
+  background: rgb(220 230 245 / 0.06);
+}
+
+.diorama-grip {
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--text-dim);
+}
+
+.diorama-move:hover .diorama-grip {
+  background: var(--text);
+}
+
+/* L-shaped corner handles, with a bigger area to grab than they show. */
+.diorama-resize {
+  width: 22px;
+  height: 22px;
+}
+
+.diorama-resize::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 0 solid var(--text-dim);
+}
+
+.diorama-resize:hover::before {
+  border-color: var(--text);
+}
+
+.diorama-resize.is-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.diorama-resize.is-nw::before {
+  top: 3px;
+  left: 3px;
+  border-width: 2px 0 0 2px;
+}
+
+.diorama-resize.is-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.diorama-resize.is-ne::before {
+  top: 3px;
+  right: 3px;
+  border-width: 2px 2px 0 0;
+}
+
+.diorama-resize.is-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.diorama-resize.is-sw::before {
+  bottom: 3px;
+  left: 3px;
+  border-width: 0 0 2px 2px;
+}
+
+.diorama-resize.is-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.diorama-resize.is-se::before {
+  bottom: 3px;
+  right: 3px;
+  border-width: 0 2px 2px 0;
+}
+
+.diorama-reset {
+  position: static;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  font: 14px / 1 var(--sans);
+  cursor: pointer;
+}
+
+.diorama-reset:hover {
+  color: var(--text);
+}
+
+/* Reset and lock buttons in a column near the top-right corner, moved by script to
+   stay on screen when that corner is past the window's edge. */
+.diorama-buttons {
+  position: absolute;
+  top: 26px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Lock, under the reset button. Shown on hover like the other controls. */
+.diorama-lock {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.diorama-lock svg {
+  width: 13px;
+  height: 13px;
+}
+
+.diorama:hover .diorama-lock,
+.diorama.is-pointer-over .diorama-lock,
+.diorama-lock:hover,
+.diorama-lock:focus-visible {
+  opacity: 1;
+}
+
+.diorama-lock:hover {
+  color: var(--text);
+}
+
+/* While locked the panel lets clicks through, but its lock still answers, so it can be found
+   by hovering its spot and clicked to unlock. */
+.diorama.is-locked .diorama-lock {
+  pointer-events: auto;
+  border-color: var(--text-dim);
+  color: var(--text);
+}
+
+/* Landscape: the board covers the right, so sit just left of it. */
+@media (min-aspect-ratio: 1/1) {
+  .diorama,
+  .diorama-backdrop {
+    right: min(54%, 880px);
+    /* The map is narrower than on a portrait screen; leave it room. */
+    width: min(21vw, 40vh);
+  }
+}
+
