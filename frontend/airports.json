@@ -4,5 +4,7 @@
   "ATL": { "name": "Hartsfield Jackson Atlanta International Airport", "icao": "KATL", "elevationFt": 1026, "lat": 33.6407, "lon": -84.4277, "radiusNm": 30 },
   "SFO": { "name": "San Francisco International Airport", "icao": "KSFO", "elevationFt": 13, "lat": 37.619, "lon": -122.375, "radiusNm": 30 },
   "YYZ": { "name": "Toronto Pearson International Airport", "icao": "CYYZ", "elevationFt": 569, "lat": 43.6772, "lon": -79.6306, "radiusNm": 30 },
-  "FRA": { "name": "Frankfurt am Main Airport", "icao": "EDDF", "elevationFt": 364, "lat": 50.0264, "lon": 8.5431, "radiusNm": 30 }
+  "FRA": { "name": "Frankfurt am Main Airport", "icao": "EDDF", "elevationFt": 364, "lat": 50.0264, "lon": 8.5431, "radiusNm": 30 },
+  "JFK": { "name": "John F Kennedy International Airport", "icao": "KJFK", "elevationFt": 13, "lat": 40.6398, "lon": -73.7789, "radiusNm": 30 },
+  "ORD": { "name": "Chicago O'Hare International Airport", "icao": "KORD", "elevationFt": 680, "lat": 41.9786, "lon": -87.9048, "radiusNm": 30 }
 }

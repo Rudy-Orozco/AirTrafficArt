@@ -46,6 +46,16 @@ body,
   height: 100%;
 }
 
+/* The 2D map can be dragged to pan. */
+.radar.map2d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map2d.is-dragging {
+  cursor: grabbing;
+}
+
 /* ---- 3D airport view: top-right corner of the map ------------------------------ */
 
 /* The panel and its backdrop share a placement (dragging sets both inline). */
