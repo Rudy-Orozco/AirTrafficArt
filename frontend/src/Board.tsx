@@ -1,39 +1,44 @@
 import { useEffect, useState, type CSSProperties, type Ref } from 'react'
-import { AIRPORT, BOARD, MAP } from './config'
+import { AIRPORT, AIRPORT_PRESET, BOARD, MAP } from './config'
 import { FlapText } from './FlapText'
 import type { BoardEvent, BoardRow, BoardState } from './flightBoard'
 import { AtisStrip } from './AtisStrip'
 import { MetarStrip } from './MetarStrip'
+import { useTick } from './useTick'
 import type { FeedStatus } from './useAircraftFeed'
 
 type BoardKind = 'arrivals' | 'departures'
 
 /** Characters per row, split into columns below. */
 const ROW_CHARS = 34
-const TIME_CHARS = BOARD.use24Hour ? 5 : 8
 const FLIGHT_CHARS = 7
 const STATUS_CHARS = 8
-const CITY_CHARS = ROW_CHARS - TIME_CHARS - FLIGHT_CHARS - STATUS_CHARS
-const COLUMNS = [TIME_CHARS, FLIGHT_CHARS, CITY_CHARS, STATUS_CHARS]
+
+/** Time, flight, city and status widths; the time column depends on the clock format setting. */
+function columns() {
+  const time = BOARD.use24Hour ? 5 : 8
+  return [time, FLIGHT_CHARS, ROW_CHARS - time - FLIGHT_CHARS - STATUS_CHARS, STATUS_CHARS]
+}
 
 /**
  * Split-flap arrivals and departures boards, side by side, each paging through
  * its flights. `ref` lets the map keep its center clear of the board.
  */
 export function Board({ board, status, ref }: { board: BoardState; status: FeedStatus; ref?: Ref<HTMLElement> }) {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), BOARD.pageMs)
-    return () => clearInterval(id)
-  }, [])
+  const tick = useTick(() => BOARD.pageMs)
 
   return (
     <section className="board" ref={ref}>
-      <div className="board-inner" style={BOARD_STYLE}>
+      <div className="board-inner" style={boardStyle()}>
         <MetarStrip />
         <AtisStrip />
         <header className="board-top">
-          <b>{AIRPORT}</b>
+          <span className="board-airport">
+            <b>{AIRPORT}</b>
+            <small>
+              {AIRPORT_PRESET.icao} / {AIRPORT_PRESET.name}
+            </small>
+          </span>
           <Clock />
         </header>
 
@@ -111,8 +116,9 @@ function Panel({
 
 function Row({ row, index }: { row: BoardRow | undefined; index: number }) {
   const { rowStaggerMs, charStaggerMs } = BOARD.flip
+  const widths = columns()
   const texts = row
-    ? [row.time === null ? '--:--' : formatTime(row.time).padStart(TIME_CHARS), row.flight, row.city, row.status]
+    ? [row.time === null ? '--:--' : formatTime(row.time).padStart(widths[0]), row.flight, row.city, row.status]
     : ['', '', '', '']
 
   // Each column picks up the cascade where the previous one left off.
@@ -121,8 +127,8 @@ function Row({ row, index }: { row: BoardRow | undefined; index: number }) {
     <li className={`panel-grid row${row?.landed ? ' is-landed' : ''}`}>
       {texts.map((text, col) => {
         const delay = index * rowStaggerMs + offset * charStaggerMs
-        offset += COLUMNS[col] + 1
-        return <FlapText key={col} text={text} length={COLUMNS[col]} delay={delay} className={col === 3 ? 'row-status' : ''} />
+        offset += widths[col] + 1
+        return <FlapText key={col} text={text} length={widths[col]} delay={delay} className={col === 3 ? 'row-status' : ''} />
       })}
     </li>
   )
@@ -146,11 +152,15 @@ function useUntilExpired(event: BoardEvent | null) {
  * Hands the config's colors and column widths to the stylesheet. Set on
  * .board-inner, where --cell (the tile width) is defined.
  */
-const BOARD_STYLE = {
-  '--arrival': MAP.arrivalColor,
-  '--departure': MAP.departureColor,
-  '--columns': COLUMNS.map((n) => `calc(${n} * var(--cell))`).join(' '),
-} as CSSProperties
+function boardStyle() {
+  return {
+    '--arrival': MAP.arrivalColor,
+    '--departure': MAP.departureColor,
+    '--columns': columns()
+      .map((n) => `calc(${n} * var(--cell))`)
+      .join(' '),
+  } as CSSProperties
+}
 
 function statusText({ count, updatedAt, error }: FeedStatus) {
   if (error) return `FEED UNAVAILABLE: ${error}`

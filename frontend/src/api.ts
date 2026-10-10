@@ -18,6 +18,10 @@ export interface Aircraft {
   aircraftType: string | null
   /** Seconds since the position was received, so we can project it to the present. */
   positionAge: number
+  /** ADS-B emitter category: A1 light, A2 small, A3 large, A5 heavy, A7 rotorcraft... or null if not sent. */
+  emitterCategory: string | null
+  /** Airport service and emergency vehicles also broadcast ADS-B (emitter category C1-C3). */
+  isVehicle: boolean
 }
 
 /** One aircraft in readsb's JSON format (used by adsb.lol, readsb, and our backend). */
@@ -35,6 +39,7 @@ interface RawAircraft {
   geom_rate?: number
   t?: string
   seen_pos?: number
+  category?: string
 }
 
 export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
@@ -62,5 +67,7 @@ export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
       verticalRate: a.baro_rate ?? a.geom_rate ?? null,
       aircraftType: a.t ?? null,
       positionAge: a.seen_pos ?? 0,
+      emitterCategory: a.category ?? null,
+      isVehicle: a.category?.startsWith('C') ?? false,
     }))
 }

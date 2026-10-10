@@ -46,6 +46,330 @@ body,
   height: 100%;
 }
 
+/* ---- 3D airport view: top-right corner of the map ------------------------------ */
+
+/* The panel and its backdrop share a placement (dragging sets both inline). */
+.diorama,
+.diorama-backdrop {
+  position: absolute;
+  /* Below the settings button. */
+  top: calc(1.5vh + 40px);
+  right: 2vw;
+  width: 40vw;
+  aspect-ratio: 1;
+}
+
+.diorama {
+  /* Above the board, so it can be dragged over the gradient at the bottom. */
+  z-index: 1;
+  touch-action: none;
+  user-select: none;
+}
+
+.diorama canvas {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.diorama.is-rotating canvas {
+  cursor: grabbing;
+}
+
+/* WebGL aircraft, over the 2D scene; drags pass through to it. */
+.diorama canvas.diorama-models {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Below the board (no z-index, and earlier in the page), so only the map is
+   blurred. Masked to the box's outline from script as the view turns. */
+.diorama-backdrop {
+  pointer-events: none;
+  /* Hidden until the first outline arrives. */
+  mask-image: linear-gradient(transparent, transparent);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+
+/* Move (caption strip) and resize (corner) handles show while hovering. */
+.diorama-move,
+.diorama-resize {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.diorama:hover .diorama-move,
+.diorama:hover .diorama-resize {
+  opacity: 1;
+}
+
+.diorama-move {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  cursor: move;
+  border-top: 2px solid var(--line);
+}
+
+.diorama-resize {
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  border-right: 2px solid var(--text-dim);
+  border-bottom: 2px solid var(--text-dim);
+}
+
+/* Landscape: the board covers the right, so sit just left of it. */
+@media (min-aspect-ratio: 1/1) {
+  .diorama,
+  .diorama-backdrop {
+    right: min(54%, 880px);
+    width: min(24vw, 46vh);
+  }
+}
+
+/* ---- Settings: gear button and panel, top right ------------------------------------ */
+
+/* Round buttons along the top-right corner: lock, then settings. */
+.toolbar-button {
+  position: absolute;
+  top: 12px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgb(3 5 10 / 0.6);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    transform 0.3s;
+}
+
+.settings-button {
+  right: 12px;
+}
+
+.lock-button {
+  right: 54px;
+}
+
+.toolbar-button:hover,
+.settings-button.is-open,
+.lock-button.is-locked {
+  color: var(--text);
+}
+
+.lock-button.is-locked {
+  border-color: var(--text-dim);
+}
+
+/* Locked: clicks go straight through to the map, and the handles stay hidden. */
+.diorama.is-locked {
+  pointer-events: none;
+}
+
+.diorama.is-locked .diorama-move,
+.diorama.is-locked .diorama-resize {
+  display: none;
+}
+
+.settings-button.is-open {
+  transform: rotate(60deg);
+}
+
+.settings-panel {
+  position: absolute;
+  top: 56px;
+  right: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 68px);
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(8 12 20 / 0.96);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+  color: var(--text);
+  font: 400 13px / 1.35 var(--sans);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-close {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  color: var(--text);
+}
+
+.settings-body {
+  overflow-y: auto;
+  padding: 4px 16px 12px;
+}
+
+.settings-group h3 {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.settings-row label small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-note {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-range input {
+  width: 110px;
+  accent-color: #4ea2ff;
+}
+
+.settings-range output {
+  min-width: 52px;
+  text-align: right;
+  font: 400 12px var(--mono);
+  color: var(--text-dim);
+}
+
+.settings-row select {
+  max-width: 190px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--row);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-row input[type='color'] {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+/* A toggle switch drawn from a plain checkbox. */
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: rgb(220 230 245 / 0.18);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.settings-switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.2s;
+}
+
+.settings-switch:checked {
+  background: #4ea2ff;
+}
+
+.settings-switch:checked::after {
+  transform: translateX(14px);
+}
+
+.settings-action {
+  margin-top: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-action:hover {
+  background: rgb(220 230 245 / 0.08);
+}
+
+.settings-action.is-primary {
+  border-color: #4ea2ff;
+  background: #4ea2ff;
+  color: #03050a;
+  font-weight: 600;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 16px 12px;
+  border-top: 1px solid var(--line);
+}
+
 /* ---- Board: floats over the bottom of the map and fades into it ------------ */
 
 .board {
@@ -308,6 +632,19 @@ body,
 .board-top b {
   font: 900 2.4em / 1 var(--sans);
   letter-spacing: -0.03em;
+}
+
+.board-airport {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+}
+
+/* Same small type as the footer. */
+.board-airport small {
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
 }
 
 .board-clock {

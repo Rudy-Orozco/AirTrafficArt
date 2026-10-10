@@ -20,7 +20,10 @@ export interface View {
 }
 
 const NM_PER_DEG_LAT = 60
-export const LABEL_FONT = `${MAP.labelSize}px ${MAP.fontFamily}`
+/** Read on every use so a changed label size applies at once. */
+export function labelFont() {
+  return `${MAP.labelSize}px ${MAP.fontFamily}`
+}
 
 /**
  * Centers the map in the part of the screen the board doesn't cover, with
@@ -81,7 +84,7 @@ export function renderBackground(
   ctx.strokeStyle = 'rgba(120, 160, 220, 0.12)'
   ctx.fillStyle = 'rgba(120, 160, 220, 0.35)'
   ctx.lineWidth = 1
-  ctx.font = LABEL_FONT
+  ctx.font = labelFont()
   ctx.textAlign = 'center'
   for (let nm = MAP.ringSpacingNm; nm <= maxRingNm; nm += MAP.ringSpacingNm) {
     const r = nm * pxPerNm
@@ -118,7 +121,7 @@ function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Proje
     ctx.fillText(city.name.toUpperCase(), p.x, p.y)
   }
 
-  ctx.font = LABEL_FONT
+  ctx.font = labelFont()
   ctx.letterSpacing = '0px'
   ctx.fillStyle = 'rgba(160, 180, 215, 0.25)'
   // Top corner: the board covers the bottom (or right) of the map.
@@ -145,7 +148,7 @@ function drawRadar(ctx: CanvasRenderingContext2D, radar: Radar, project: Project
 
   if (radar.validTime) {
     const time = radar.validTime.toISOString().slice(11, 16).replace(':', '')
-    ctx.font = LABEL_FONT
+    ctx.font = labelFont()
     ctx.textBaseline = 'top'
     ctx.textAlign = 'left'
     ctx.fillStyle = 'rgba(160, 180, 215, 0.4)'
@@ -173,7 +176,7 @@ function tracePath(ctx: CanvasRenderingContext2D, line: Line, project: Projectio
 }
 
 export function drawTracks(ctx: CanvasRenderingContext2D, tracks: Iterable<Track>, project: Projection) {
-  ctx.font = LABEL_FONT
+  ctx.font = labelFont()
   ctx.textAlign = 'left'
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -185,19 +188,38 @@ export function drawTracks(ctx: CanvasRenderingContext2D, tracks: Iterable<Track
   const positions = visible.map((t) => project(t.pos))
 
   visible.forEach((t, i) => {
-    const { color, opacity } = KIND_STYLES[t.info.kind]
+    const { color, opacity } = kindStyle(t.info.kind)
     drawTrail(ctx, t, positions[i], project, color, t.opacity * opacity)
     ctx.globalAlpha = t.opacity * opacity
     ctx.fillStyle = color
     drawPlane(ctx, positions[i], t.heading, MAP.planeSize)
+    if (MAP.showPredictions && t.info.kind !== 'other') drawPrediction(ctx, t, positions[i], project, color)
   })
 
   if (MAP.showLabels) drawLabels(ctx, visible, positions)
   ctx.globalAlpha = 1
 }
 
+/** Debug overlay: a dashed line from the plane to the point its current segment is heading for. */
+function drawPrediction(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project: Projection, color: string) {
+  const target = project(t.to)
+  ctx.save()
+  ctx.globalAlpha = t.opacity
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1
+  ctx.setLineDash([3, 3])
+  ctx.beginPath()
+  ctx.moveTo(pos.x, pos.y)
+  ctx.lineTo(target.x, target.y)
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.beginPath()
+  ctx.arc(target.x, target.y, 3, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.restore()
+}
+
 const LABEL_OPACITY = 0.8
-const LABEL_HEIGHT = MAP.labelSize + 2
 
 /** Each aircraft's label placement, kept between frames so labels glide rather than jump. */
 const labelStates = new WeakMap<Track, LabelState>()
@@ -222,7 +244,7 @@ function drawLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: P
     return {
       anchor: positions[i],
       width,
-      height: LABEL_HEIGHT,
+      height: MAP.labelSize + 2,
       priority: isBackground ? 1 : 0,
       optional: isBackground && MAP.hideCrowdedLabels,
       state,
@@ -233,7 +255,7 @@ function drawLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: P
   ctx.textBaseline = 'middle'
   ctx.lineWidth = 1
   items.forEach((item, i) => {
-    const { color, opacity } = KIND_STYLES[tracks[i].info.kind]
+    const { color, opacity } = kindStyle(tracks[i].info.kind)
     ctx.globalAlpha = tracks[i].opacity * opacity * LABEL_OPACITY * item.state.alpha
     if (ctx.globalAlpha < 0.01) return
     const line = leaderLine(item)
@@ -254,20 +276,22 @@ function drawLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: P
 }
 
 function measure(ctx: CanvasRenderingContext2D, text: string) {
-  let width = textWidths.get(text)
+  // Keyed by font too, since the label size can change.
+  const key = `${ctx.font}|${text}`
+  let width = textWidths.get(key)
   if (width === undefined) {
     // Labels change as altitudes do; don't let the cache grow forever.
     if (textWidths.size > 2000) textWidths.clear()
     width = ctx.measureText(text).width
-    textWidths.set(text, width)
+    textWidths.set(key, width)
   }
   return width
 }
 
-const KIND_STYLES: Record<FlightKind, { color: string; opacity: number }> = {
-  departure: { color: MAP.departureColor, opacity: 1 },
-  arrival: { color: MAP.arrivalColor, opacity: 1 },
-  other: { color: MAP.otherColor, opacity: MAP.otherOpacity },
+function kindStyle(kind: FlightKind): { color: string; opacity: number } {
+  if (kind === 'departure') return { color: MAP.departureColor, opacity: 1 }
+  if (kind === 'arrival') return { color: MAP.arrivalColor, opacity: 1 }
+  return { color: MAP.otherColor, opacity: MAP.otherOpacity }
 }
 
 const DRAW_ORDER: Record<FlightKind, number> = { other: 0, departure: 1, arrival: 1 }
@@ -282,16 +306,41 @@ function drawTrail(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project:
   gradient.addColorStop(0, withAlpha(color, 0))
   gradient.addColorStop(1, withAlpha(color, MAP.trailOpacity * opacity))
 
+  const points = smoothPath([...t.trail.map(project), pos], MAP.trailSmoothing)
+  // Curve through the midpoints between samples, using each sample as the control point.
   ctx.beginPath()
-  ctx.moveTo(start.x, start.y)
-  for (let i = 1; i < t.trail.length; i++) {
-    const p = project(t.trail[i])
-    ctx.lineTo(p.x, p.y)
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i]
+    const next = points[i + 1]
+    ctx.quadraticCurveTo(p.x, p.y, (p.x + next.x) / 2, (p.y + next.y) / 2)
   }
   ctx.lineTo(pos.x, pos.y)
   ctx.strokeStyle = gradient
   ctx.lineWidth = MAP.trailWidth
   ctx.stroke()
+}
+
+/**
+ * Moving average over up to `radius` neighbours on each side. The window
+ * narrows towards the ends so the first and last points stay put (the trail
+ * still meets the plane).
+ */
+function smoothPath(points: Point[], radius: number): Point[] {
+  if (radius <= 0) return points
+  // Prefix sums make each average O(1).
+  const sumX = [0]
+  const sumY = [0]
+  for (const p of points) {
+    sumX.push(sumX[sumX.length - 1] + p.x)
+    sumY.push(sumY[sumY.length - 1] + p.y)
+  }
+  const last = points.length - 1
+  return points.map((_, i) => {
+    const r = Math.min(radius, i, last - i)
+    const n = 2 * r + 1
+    return { x: (sumX[i + r + 1] - sumX[i - r]) / n, y: (sumY[i + r + 1] - sumY[i - r]) / n }
+  })
 }
 
 /** "#rrggbb" plus an alpha, as a CSS color. */

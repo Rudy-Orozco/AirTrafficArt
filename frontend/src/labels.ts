@@ -42,7 +42,9 @@ const DIRECTIONS: [number, number][] = [
   [0, 1],
 ]
 /** Space between the aircraft icon and a label right next to it. */
-const NEAR_GAP = MAP.planeSize + 4
+function nearGap() {
+  return MAP.planeSize + 4
+}
 const PADDING = 3
 
 /** Cost per square pixel of a label covering another label, an aircraft, or the screen edge. */
@@ -118,7 +120,7 @@ function place(items: LabelItem[], aircraft: Point[], bounds: Bounds) {
 /** Box center for a slot: snug against the icon, or one leader-line length farther out. */
 function slotOffset(slot: number, width: number, height: number): Point {
   const [dx, dy] = DIRECTIONS[slot % DIRECTIONS.length]
-  const gap = NEAR_GAP + (slot >= DIRECTIONS.length ? MAP.labelLeaderLength : 0)
+  const gap = nearGap() + (slot >= DIRECTIONS.length ? MAP.labelLeaderLength : 0)
   return { x: dx * (gap + width / 2), y: dy * (gap + height / 2) }
 }
 
@@ -167,7 +169,7 @@ export function leaderLine(item: LabelItem): { from: Point; to: Point } | null {
   const dx = to.x - anchor.x
   const dy = to.y - anchor.y
   const dist = Math.hypot(dx, dy)
-  if (dist < NEAR_GAP + 6) return null
+  if (dist < nearGap() + 6) return null
   const start = MAP.planeSize + 2
   return { from: { x: anchor.x + (dx / dist) * start, y: anchor.y + (dy / dist) * start }, to }
 }

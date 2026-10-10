@@ -2,7 +2,8 @@ import { useEffect, useRef, type RefObject } from 'react'
 import { fetchBasemap, type Basemap } from './basemap'
 import { AIRPORT, CENTER, MAP, VIEW_RADIUS_NM } from './config'
 import { loadRadar, type Radar } from './radar'
-import { createProjection, createView, drawTracks, LABEL_FONT, renderBackground } from './renderer'
+import { createProjection, createView, drawTracks, labelFont, renderBackground } from './renderer'
+import { settingsVersion } from './settings'
 import type { Tracker } from './tracker'
 
 /**
@@ -74,9 +75,15 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
     if (MAP.radar.enabled) refreshRadar()
 
     // Labels baked into the background need redrawing once the web font arrives.
-    document.fonts.load(LABEL_FONT).then(redrawBackground, () => {})
+    document.fonts.load(labelFont()).then(redrawBackground, () => {})
 
+    // Ring spacing, radar opacity and label size are baked into the background.
+    let builtSettings = settingsVersion()
     let frame = requestAnimationFrame(function loop(now) {
+      if (settingsVersion() !== builtSettings) {
+        builtSettings = settingsVersion()
+        redrawBackground()
+      }
       tracker.step(now)
       ctx.drawImage(background, 0, 0, width, height)
       drawTracks(ctx, tracker.tracks.values(), project)

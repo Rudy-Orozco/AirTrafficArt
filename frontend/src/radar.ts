@@ -17,20 +17,24 @@ const BOUNDS = (() => {
 const IMAGE_SIZE = 1024
 
 /**
- * NEXRAD base reflectivity composite for the continental US, from the Iowa
- * Environmental Mesonet. Requested in plain lat/lon (EPSG:4326), which our map
- * projection maps linearly, so the image just stretches onto the map.
+ * NOAA's MRMS (Multi-Radar Multi-Sensor) quality-controlled base reflectivity
+ * for the continental US: every NEXRAD radar merged, with ground clutter,
+ * birds and insects filtered out, updated about every 2 minutes. Requested in
+ * plain lat/lon (EPSG:4326), which our map projection maps linearly, so the
+ * image just stretches onto the map. The server allows browser requests.
  */
-const WMS_URL = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi'
-const META_URL = 'https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json'
+const LAYER = 'conus_bref_qcd'
+const WMS_URL = `https://opengeo.ncep.noaa.gov/geoserver/conus/${LAYER}/ows`
 
 export async function loadRadar(signal: AbortSignal): Promise<Radar> {
   const { west, south, east, north } = BOUNDS
+  // Ask for the latest scan by its time, so the image and the time shown match.
+  const validTime = await loadLatestTime(signal)
   const params = new URLSearchParams({
     SERVICE: 'WMS',
     VERSION: '1.1.1',
     REQUEST: 'GetMap',
-    LAYERS: 'nexrad-n0q-900913',
+    LAYERS: LAYER,
     STYLES: '',
     SRS: 'EPSG:4326',
     BBOX: [west, south, east, north].map((v) => v.toFixed(4)).join(','),
@@ -38,11 +42,10 @@ export async function loadRadar(signal: AbortSignal): Promise<Radar> {
     HEIGHT: `${IMAGE_SIZE}`,
     FORMAT: 'image/png',
     TRANSPARENT: 'true',
-    // The server caches for 5 minutes; this keeps the browser from reusing an older copy.
-    t: `${Math.floor(Date.now() / 300_000)}`,
   })
+  if (validTime) params.set('TIME', validTime.toISOString())
 
-  const [image, validTime] = await Promise.all([loadImage(`${WMS_URL}?${params}`, signal), loadValidTime(signal)])
+  const image = await loadImage(`${WMS_URL}?${params}`, signal)
   return { image: MAP.radar.hideLightEchoes ? withoutLightEchoes(image) : toCanvas(image), bounds: BOUNDS, validTime }
 }
 
@@ -60,12 +63,19 @@ async function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageEle
   }
 }
 
-async function loadValidTime(signal: AbortSignal): Promise<Date | null> {
+/** The newest scan's time, the default of the layer's time dimension in its capabilities. */
+async function loadLatestTime(signal: AbortSignal): Promise<Date | null> {
   try {
-    const res = await fetch(META_URL, { signal })
-    const meta: { meta?: { valid?: string } } = await res.json()
-    return meta.meta?.valid ? new Date(meta.meta.valid) : null
-  } catch {
+    const params = new URLSearchParams({ SERVICE: 'WMS', VERSION: '1.3.0', REQUEST: 'GetCapabilities' })
+    const res = await fetch(`${WMS_URL}?${params}`, {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(FEED.requestTimeoutMs)]),
+    })
+    const match = (await res.text()).match(/<Dimension[^>]*name="time"[^>]*default="([^"]+)"/)
+    const time = match ? new Date(match[1]) : null
+    return time && !Number.isNaN(time.getTime()) ? time : null
+  } catch (err) {
+    if (signal.aborted) throw err
+    // Without a time, ask for the default (latest) scan and show no timestamp.
     return null
   }
 }
@@ -80,8 +90,8 @@ function toCanvas(image: HTMLImageElement) {
 
 /**
  * Drops the weakest returns, below about 20 dBZ: the blues, cyans and teals of
- * the color scale. They're mostly ground clutter, birds and insects at night, or
- * drizzle. Keeps rain and storms: pure green (~20 dBZ, light rain) through
+ * the color scale. MRMS already removes most clutter, birds and insects; what's
+ * left down there is mostly drizzle and virga that never reaches the ground. Keeps rain and storms: pure green (~20 dBZ, light rain) through
  * yellow, red and purple.
  */
 function withoutLightEchoes(image: HTMLImageElement) {

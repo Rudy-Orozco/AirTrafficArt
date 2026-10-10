@@ -1,5 +1,5 @@
 import type { Aircraft } from './api'
-import { FEED, MAP, MOTION } from './config'
+import { AIRPORT_PRESET, FEED, MAP, MOTION } from './config'
 import { wasLanding, type Flight } from './flights'
 
 export interface LatLon {
@@ -19,28 +19,58 @@ export interface Track {
   velocity: LatLon
   segmentStart: number
   segmentMs: number
+  /** When the latest report's position was received (same clock as `now`). */
+  reportedAt: number
+  /** How fast the track is turning, in degrees per millisecond (positive = right), from the last two reports. */
+  turnRate: number
   firstSeen: number
   lastSeen: number
   /** Set when the aircraft touches down; it then fades out. */
   landedAt: number | null
+  /** Altitude (feet) glides from `altFrom` to `altTo` over the segment, then carries on at `altRate` (feet per ms). */
+  altFrom: number | null
+  altTo: number | null
+  altRate: number
 
   /** Updated every frame by step(). */
   pos: LatLon
   vel: LatLon
   heading: number
+  /** Smoothed altitude in feet, or null if unknown. */
+  altitude: number | null
+  /** `turnRate` eased over time (degrees per ms, positive = right), so the 3D models roll into and out of turns. */
+  turning: number
+  lastStep: number
   opacity: number
   trail: LatLon[]
   lastTrailAt: number
 }
 
+/**
+ * Where an aircraft is drawn as it switches between the airborne and ground
+ * trackers (takeoff or touchdown), so the other one carries on from there.
+ */
+export interface Handoff {
+  pos: LatLon
+  heading: number
+  /** Feet above the field. */
+  heightFt: number
+}
+
 const TRAIL_SAMPLE_MS = 500
+/** Time constant for easing the turn rate used to bank the 3D models. */
+const TURN_SMOOTHING_MS = 2000
+/** How much each new gap between fetches moves the running average (0 to 1). */
+const GAP_SMOOTHING = 0.3
 
 /**
  * Turns periodic position snapshots into continuous motion.
  *
  * Each fetch starts a new segment that curves from wherever the plane is drawn
  * to where its reported speed and track say it will be when the next fetch
- * lands. The curve (a cubic Hermite spline) starts at the plane's current
+ * lands. A turning plane (its track changed since the last report) is predicted
+ * to keep turning at the same rate, so turns follow arcs rather than being
+ * corrected back at every fetch. The curve (a cubic Hermite spline) starts at the plane's current
  * velocity and ends at its reported velocity, so position and direction never
  * jump: turns come out as smooth arcs instead of corners. Planes move from the
  * moment they appear and keep gliding along their heading if a fetch fails.
@@ -51,13 +81,22 @@ const TRAIL_SAMPLE_MS = 500
 export class Tracker {
   readonly tracks = new Map<string, Track>()
   private lastIngest: number | null = null
+  private segmentMs = FEED.pollMs
 
-  ingest(flights: Flight[], now: number) {
-    // Match the segment length to the real gap between fetches (pollMs plus
-    // network latency) so planes arrive just as the next update lands.
-    const segmentMs =
-      this.lastIngest === null ? FEED.pollMs : clamp(now - this.lastIngest, FEED.pollMs / 2, FEED.pollMs * 2)
+  /**
+   * `handoff` gives where a just-departed aircraft was drawn on the ground, so
+   * it lifts off from there instead of appearing from nowhere.
+   */
+  ingest(flights: Flight[], now: number, handoff: (hex: string) => Handoff | null = () => null) {
+    // Match the segment length to the gap between fetches (pollMs plus however
+    // long the request takes) so planes arrive just as the next update lands.
+    // Averaging keeps one slow request from stretching or squashing the next segment.
+    if (this.lastIngest !== null) {
+      const gap = clamp(now - this.lastIngest, FEED.pollMs, FEED.pollMs * 2)
+      this.segmentMs += (gap - this.segmentMs) * GAP_SMOOTHING
+    }
     this.lastIngest = now
+    const segmentMs = this.segmentMs
 
     const reported = new Set(flights.map((f) => f.hex))
     for (const t of this.tracks.values()) {
@@ -72,28 +111,43 @@ export class Tracker {
         continue
       }
 
-      const velocity = velocityOf(a)
+      const ageMs = a.positionAge * 1000
+      const reportedAt = now - ageMs
+      const turnRate = existing ? turnRateOf(existing, a, reportedAt) : 0
       // Reported positions are already `positionAge` seconds old; aim for where
       // the plane will be at the end of this segment.
-      const position = { lat: a.lat, lon: a.lon }
-      const target = advance(position, velocity, a.positionAge * 1000 + segmentMs)
+      const target = predict(a, turnRate, ageMs + segmentMs)
+      // Altitude is extrapolated along the vertical rate the same way.
+      const altRate = (a.verticalRate ?? 0) / 60_000
+      const altNow = a.altitude === null ? null : a.altitude + altRate * ageMs
+      const altTo = altNow === null ? null : altNow + altRate * segmentMs
 
       if (!existing) {
-        const pos = advance(position, velocity, a.positionAge * 1000)
+        const takeoff = handoff(a.hex)
+        const pos = takeoff?.pos ?? predict(a, turnRate, ageMs).pos
         this.tracks.set(a.hex, {
           info: a,
           from: pos,
-          fromVelocity: velocity,
-          to: target,
-          velocity,
+          fromVelocity: target.velocity,
+          to: target.pos,
+          velocity: target.velocity,
           segmentStart: now,
           segmentMs,
-          firstSeen: now,
+          reportedAt,
+          turnRate,
+          // Already on screen on the ground, so no fade-in.
+          firstSeen: takeoff ? now - MOTION.fadeInMs : now,
           lastSeen: now,
           landedAt: null,
+          altFrom: takeoff ? AIRPORT_PRESET.elevationFt + takeoff.heightFt : altNow,
+          altTo,
+          altRate,
           pos,
-          vel: velocity,
-          heading: a.track ?? 0,
+          vel: target.velocity,
+          heading: takeoff?.heading ?? a.track ?? 0,
+          altitude: takeoff ? AIRPORT_PRESET.elevationFt + takeoff.heightFt : altNow,
+          turning: 0,
+          lastStep: now,
           opacity: 0,
           trail: [],
           lastTrailAt: now,
@@ -104,10 +158,15 @@ export class Tracker {
       existing.info = a
       existing.from = existing.pos
       existing.fromVelocity = existing.vel
-      existing.to = target
-      existing.velocity = velocity
+      existing.to = target.pos
+      existing.velocity = target.velocity
+      existing.reportedAt = reportedAt
+      existing.turnRate = turnRate
       existing.segmentStart = now
       existing.segmentMs = segmentMs
+      existing.altFrom = existing.altitude ?? altNow
+      existing.altTo = altTo
+      existing.altRate = altRate
       existing.lastSeen = now
       // Touchdown reports can flicker; an airborne report means it's still flying.
       existing.landedAt = null
@@ -140,8 +199,17 @@ export class Tracker {
         t.pos = advance(t.to, t.velocity, elapsed - t.segmentMs)
         t.vel = t.velocity
       }
+      if (t.altTo === null || t.altFrom === null) t.altitude = t.altTo
+      else if (elapsed < t.segmentMs) t.altitude = t.altFrom + (t.altTo - t.altFrom) * (elapsed / t.segmentMs)
+      else t.altitude = t.altTo + t.altRate * (elapsed - t.segmentMs)
+
       // Point the arrow along the curve; keep the last heading if the speed is unknown.
       t.heading = headingOf(t.vel, t.pos.lat) ?? t.info.track ?? t.heading
+      // The reported turn rate only changes with each fetch; ease toward it so the bank
+      // rolls in and out. (The drawn curve's own turning wobbles too much at segment joins.)
+      const dt = now - t.lastStep
+      if (dt > 0) t.turning += (t.turnRate - t.turning) * (1 - Math.exp(-dt / TURN_SMOOTHING_MS))
+      t.lastStep = now
 
       const fadeIn = Math.min((now - t.firstSeen) / MOTION.fadeInMs, 1)
       const fadeOut = 1 - clamp((missingFor - MOTION.staleMs) / MOTION.fadeOutMs, 0, 1)
@@ -155,19 +223,59 @@ export class Tracker {
       }
     }
   }
+
+  /** Where a just-landed aircraft was drawn, for the ground tracker to carry on from. */
+  handoff(hex: string): Handoff | null {
+    const t = this.tracks.get(hex)
+    if (!t) return null
+    const heightFt = t.altitude === null ? 0 : Math.max(t.altitude - AIRPORT_PRESET.elevationFt, 0)
+    return { pos: t.pos, heading: t.heading, heightFt }
+  }
 }
 
 const NM_PER_DEG_LAT = 60
 const MS_PER_HOUR = 3_600_000
+/** Twice a standard-rate turn (3°/s); anything faster is treated as a bad track report. */
+const MAX_TURN_RATE = 6 / 1000
+/** Reports closer together than this give too noisy a turn rate. */
+const MIN_TURN_SAMPLE_MS = 2000
 
-/** Convert ground speed (knots) and track (degrees) to degrees of lat/lon per millisecond. */
-function velocityOf(a: Aircraft): LatLon {
-  if (a.groundSpeed === null || a.track === null) return { lat: 0, lon: 0 }
+/**
+ * Degrees per millisecond the track turned between the track's previous report
+ * and `a`. Keeps the previous rate if no fresh position arrived in between.
+ */
+function turnRateOf(t: Track, a: Aircraft, reportedAt: number): number {
+  const elapsed = reportedAt - t.reportedAt
+  if (elapsed < MIN_TURN_SAMPLE_MS) return t.turnRate
+  if (a.track === null || t.info.track === null) return 0
+  const turned = ((a.track - t.info.track + 540) % 360) - 180
+  const rate = turned / elapsed
+  return Math.abs(rate) > MAX_TURN_RATE ? 0 : rate
+}
+
+/**
+ * Where `a` will be `ms` after its report, and its velocity there, if it keeps
+ * its ground speed and turns at `turnRate` (degrees per millisecond).
+ */
+function predict(a: Aircraft, turnRate: number, ms: number): { pos: LatLon; velocity: LatLon } {
+  const pos = { lat: a.lat, lon: a.lon }
+  if (a.groundSpeed === null || a.track === null) return { pos, velocity: { lat: 0, lon: 0 } }
   const nmPerMs = a.groundSpeed / MS_PER_HOUR
-  const rad = (a.track * Math.PI) / 180
+  const start = (a.track * Math.PI) / 180
+  const end = ((a.track + turnRate * ms) * Math.PI) / 180
+  const turnedRad = end - start
+  // Distance covered north and east: along an arc, or straight if barely turning.
+  const [north, east] =
+    Math.abs(turnedRad) < 1e-6
+      ? [nmPerMs * ms * Math.cos(start), nmPerMs * ms * Math.sin(start)]
+      : [
+          ((nmPerMs * ms) / turnedRad) * (Math.sin(end) - Math.sin(start)),
+          ((nmPerMs * ms) / turnedRad) * (Math.cos(start) - Math.cos(end)),
+        ]
+  const lonScale = NM_PER_DEG_LAT * Math.cos((a.lat * Math.PI) / 180)
   return {
-    lat: (nmPerMs * Math.cos(rad)) / NM_PER_DEG_LAT,
-    lon: (nmPerMs * Math.sin(rad)) / (NM_PER_DEG_LAT * Math.cos((a.lat * Math.PI) / 180)),
+    pos: { lat: a.lat + north / NM_PER_DEG_LAT, lon: a.lon + east / lonScale },
+    velocity: { lat: (nmPerMs * Math.cos(end)) / NM_PER_DEG_LAT, lon: (nmPerMs * Math.sin(end)) / lonScale },
   }
 }
 

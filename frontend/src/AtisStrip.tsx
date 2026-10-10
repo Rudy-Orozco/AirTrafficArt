@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { atisSentences, useAtis, type Atis } from './atis'
 import { AIRPORT_PRESET, ATIS } from './config'
+import { useTick } from './useTick'
 import { FlapText } from './FlapText'
 
 const LABELS: Record<Atis['type'], string> = { arr: 'Arr', dep: 'Dep', combined: 'ATIS' }
@@ -17,11 +18,7 @@ export function AtisStrip() {
   const atis = useAtis(AIRPORT_PRESET.icao)
   const lines = useMemo(() => atis.flatMap((a) => atisSentences(a.datis).map((text) => ({ type: a.type, text }))), [atis])
 
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), ATIS.lineMs)
-    return () => clearInterval(id)
-  }, [])
+  const tick = useTick(() => ATIS.lineMs)
 
   const count = lines.length
   const index = count ? tick % count : 0
