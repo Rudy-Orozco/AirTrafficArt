@@ -109,7 +109,7 @@ const COVER_ORDER = ['SKC', 'CLR', 'FEW', 'SCT', 'BKN', 'OVC', 'OVX', 'VV']
 const COVER_FRACTION: Record<string, number> = { FEW: 0.25, SCT: 0.5, BKN: 0.75, OVC: 1 }
 
 /** Station-model sky cover for the most covered layer: empty, ¼, ½, ¾ or fully filled; ✕ if obscured. */
-export function SkyCoverIcon({ clouds }: Metar) {
+export function SkyCoverIcon({ clouds = [] }: Metar) {
   const cover = clouds.reduce(
     (most, c) => (COVER_ORDER.indexOf(c.cover) > COVER_ORDER.indexOf(most) ? c.cover : most),
     'CLR',

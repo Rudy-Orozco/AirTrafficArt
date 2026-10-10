@@ -18,7 +18,8 @@ export interface Metar {
   visib: number | string | null
   /** Hectopascals. */
   altim: number | null
-  clouds: { cover: string; base: number | null }[]
+  /** Left out when a layer's height couldn't be measured (e.g. "FEW///TCU" from an automatic station). */
+  clouds?: { cover: string; base: number | null }[]
   fltCat?: FlightCategory
 }
 
@@ -29,7 +30,11 @@ async function fetchMetar(icao: string, signal: AbortSignal): Promise<Metar | nu
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   // The last two hours of reports; use the newest.
   const reports: Metar[] = await res.json()
-  return reports.reduce<Metar | null>((newest, m) => (!newest || m.obsTime > newest.obsTime ? m : newest), null)
+  const newest = reports.reduce<Metar | null>((newest, m) => (!newest || m.obsTime > newest.obsTime ? m : newest), null)
+  if (!newest) return null
+  // Fields the service couldn't decode are left out rather than null.
+  const { temp, dewp, wdir, wspd, visib, altim } = newest
+  return { ...newest, temp: temp ?? null, dewp: dewp ?? null, wdir: wdir ?? null, wspd: wspd ?? null, visib: visib ?? null, altim: altim ?? null }
 }
 
 /** METARs come hourly; a newest report older than this is likely a stale cached copy. */
@@ -86,6 +91,7 @@ export function formatVisibility({ visib }: Metar) {
 
 /** The lowest broken, overcast or obscured layer, which is what counts as a ceiling. */
 export function formatCeiling({ clouds }: Metar) {
+  if (!clouds) return '—'
   const ceiling = clouds.find((c) => ['BKN', 'OVC', 'OVX', 'VV'].includes(c.cover) && c.base !== null)
   if (ceiling) return `${ceiling.cover} ${ceiling.base!.toLocaleString()} FT`
   return clouds.length === 0 || clouds[0].cover === 'CLR' || clouds[0].cover === 'SKC' ? 'CLEAR' : 'NONE'

@@ -7,6 +7,7 @@ import { MetarStrip } from '../weather/MetarStrip'
 import { formatLocalDate, formatLocalTime, localZoneName } from './localTime'
 import { useTick } from '../lib/useTick'
 import type { FeedStatus } from '../feed/useAircraftFeed'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
 import './Board.css'
 
 type BoardKind = 'arrivals' | 'departures'
@@ -32,8 +33,12 @@ export function Board({ board, status, ref }: { board: BoardState; status: FeedS
   return (
     <section className="board" ref={ref}>
       <div className="board-inner" style={boardStyle()}>
-        <MetarStrip />
-        <AtisStrip />
+        <ErrorBoundary name="Weather (METAR)">
+          <MetarStrip />
+        </ErrorBoundary>
+        <ErrorBoundary name="ATIS">
+          <AtisStrip />
+        </ErrorBoundary>
         <header className="board-top">
           <span className="board-airport">
             <b>{AIRPORT}</b>
