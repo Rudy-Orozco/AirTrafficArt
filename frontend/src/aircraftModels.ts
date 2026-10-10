@@ -71,7 +71,8 @@ export class AircraftModels {
       const size = aircraftSize(pose.info.aircraftType, pose.info.emitterCategory)
       const geometry = modelGeometry(size.kind, size.lengthM, size.spanM, pose.info.aircraftType)
       if (!entry) {
-        const material = new MeshPhongMaterial({ flatShading: true, shininess: 40, transparent: true, side: DoubleSide })
+        // One pass: three.js otherwise draws a transparent double-sided material twice a frame, re-checking its shader each time.
+        const material = new MeshPhongMaterial({ flatShading: true, shininess: 40, transparent: true, side: DoubleSide, forceSinglePass: true })
         const mesh = new Mesh(geometry, material)
         mesh.frustumCulled = false
         this.scene.add(mesh)

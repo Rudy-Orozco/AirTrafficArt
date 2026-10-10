@@ -1,9 +1,10 @@
 import { useEffect, useState, type CSSProperties, type Ref } from 'react'
-import { AIRPORT, AIRPORT_PRESET, BOARD, MAP } from './config'
+import { AIRPORT, AIRPORT_PRESET, BOARD, MAP, MOTION } from './config'
 import { FlapText } from './FlapText'
 import type { BoardEvent, BoardRow, BoardState } from './flightBoard'
 import { AtisStrip } from './AtisStrip'
 import { MetarStrip } from './MetarStrip'
+import { formatLocalDate, formatLocalTime, localZoneName } from './localTime'
 import { useTick } from './useTick'
 import type { FeedStatus } from './useAircraftFeed'
 
@@ -49,7 +50,7 @@ export function Board({ board, status, ref }: { board: BoardState; status: FeedS
 
         <footer className="board-footer">
           <span className={`board-status${status.error ? ' is-error' : ''}`}>
-            <PollTimer nextPoll={status.nextPoll} />
+            <PollTimer nextPoll={status.nextPoll} fetching={status.fetching} />
             {statusText(status)}
           </span>
           <span>{status.source} / adsb.im</span>
@@ -165,23 +166,28 @@ function boardStyle() {
 function statusText({ count, updatedAt, error }: FeedStatus) {
   if (error) return `FEED UNAVAILABLE: ${error}`
   if (!updatedAt) return 'WAITING FOR DATA'
-  return `${count} AIRBORNE / UPDATED ${formatTime(updatedAt.getTime())}`
+  return `${count} AIRBORNE / UPDATED ${formatTime(updatedAt.getTime())} ${localZoneName(updatedAt.getTime())}${MOTION.delayed ? ' / DELAYED VIEW' : ''}`
 }
 
+/** Flight and update times are the airport's local time. */
 function formatTime(ms: number) {
-  return (
-    new Date(ms)
-      .toLocaleTimeString([], { hour: BOARD.use24Hour ? '2-digit' : 'numeric', minute: '2-digit', hour12: !BOARD.use24Hour })
-      // Some locales separate "PM" with a narrow no-break space.
-      .replace(/\s/g, ' ')
-  )
+  return formatLocalTime(ms)
 }
 
 /**
  * A ring that empties as the next data fetch approaches. Restarts (via its key)
- * each time a fetch is scheduled, including longer waits after errors.
+ * each time a fetch is scheduled, including longer waits after errors. While a
+ * request is on its way, it spins instead.
  */
-function PollTimer({ nextPoll }: { nextPoll: FeedStatus['nextPoll'] }) {
+function PollTimer({ nextPoll, fetching }: { nextPoll: FeedStatus['nextPoll']; fetching: boolean }) {
+  if (fetching) {
+    return (
+      <svg className="poll-timer is-fetching" viewBox="0 0 20 20" aria-label="Fetching">
+        <circle className="poll-timer-track" cx="10" cy="10" r="8" />
+        <circle className="poll-timer-spin" cx="10" cy="10" r="8" pathLength={1} />
+      </svg>
+    )
+  }
   if (nextPoll === null) return null
   return (
     <svg className="poll-timer" viewBox="0 0 20 20" key={nextPoll.id} aria-hidden>
@@ -198,12 +204,23 @@ function PollTimer({ nextPoll }: { nextPoll: FeedStatus['nextPoll'] }) {
   )
 }
 
-/** Ticks on its own so the board doesn't re-render every second. */
+/**
+ * The airport's local time with seconds, its time zone and the date. Ticks on its
+ * own so the board doesn't re-render every second.
+ */
 function Clock() {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
-  return <time className="board-clock">{formatTime(now)}</time>
+  return (
+    <div className="board-clock" aria-label={`Local time at ${AIRPORT}`}>
+      <div className="board-clock-label">Local time</div>
+      <time className="board-clock-time">{formatLocalTime(now, { seconds: true })}</time>
+      <div className="board-clock-label">
+        {localZoneName(now)} · {formatLocalDate(now)}
+      </div>
+    </div>
+  )
 }

@@ -88,7 +88,7 @@ export const SETTING_TABS: { title: string; groups: SettingGroup[] }[] = [
           { path: 'MAP.departureColor', label: 'Departures', type: 'color' },
           { path: 'MAP.otherColor', label: 'Other traffic', type: 'color' },
           { path: 'MAP.otherOpacity', label: 'Other traffic opacity', hint: 'White aircraft, labels and trails, in every view', type: 'range', min: 0, max: 1, step: 0.05 },
-          { path: 'MAP.showPredictions', label: 'Show predicted positions', hint: 'Debug overlay for arrivals and departures', type: 'toggle' },
+          { path: 'MAP.showPredictions', label: 'Show predicted positions', hint: 'Path to the next update for arrivals and departures, 2D and 3D', type: 'toggle' },
         ],
       },
       {
@@ -220,6 +220,17 @@ export const SETTING_TABS: { title: string; groups: SettingGroup[] }[] = [
         title: 'Data',
         settings: [
           { path: 'FEED.pollMs', label: 'Update every', hint: 'adsb.lol rate-limits faster than ~10 s', type: 'range', min: 5000, max: 60_000, step: 1000, ...SECONDS },
+          { path: 'MOTION.delayed', label: 'Delayed, smoother paths', hint: 'Flies between reported positions; the map runs behind live', type: 'toggle' },
+          {
+            path: 'MOTION.delayedReports',
+            label: 'Delayed: reports ahead',
+            hint: '3 rides out a missed update, but runs further behind',
+            type: 'select',
+            options: [
+              { value: '2', label: '2 (about one update behind)' },
+              { value: '3', label: '3 (about two updates behind)' },
+            ],
+          },
         ],
       },
     ],

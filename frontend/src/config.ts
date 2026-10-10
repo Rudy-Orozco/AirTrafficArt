@@ -35,6 +35,10 @@ export interface AirportPreset {
   lon: number
   /** Nautical miles from the airport to the nearer edge of the visible map. */
   radiusNm: number
+  /** IANA time zone, e.g. America/New_York: every time on screen is the airport's local time. */
+  timeZone: string
+  /** The airport's logo, shown in the top-left corner: a path under public/, e.g. "/logos/JFK.svg". */
+  logo?: string
 }
 
 export const PRESETS: Record<string, AirportPreset> = airports
@@ -78,12 +82,29 @@ export const FEED = {
 // ---- Aircraft on the map ----------------------------------------------------
 
 export const MOTION = {
+  /**
+   * Off: aircraft are predicted ahead to where they should be when the next fetch lands.
+   * On: each aircraft waits for two reports, then flies a smooth curve between its
+   * reported positions, so the map runs about one fetch behind live.
+   */
+  delayed: false,
+  /** Delayed view: how many reports an aircraft waits for, and so how many fetches (less one) the map runs behind. */
+  delayedReports: 2 as 2 | 3,
   /** How long a newly seen (or just took off) aircraft takes to fade in. */
   fadeInMs: 1000,
-  /** Keep gliding an aircraft along its last heading this long after it drops out of the feed... */
+  /**
+   * Keep gliding an aircraft along its last heading this long after it drops out of
+   * the feed (or this many gaps between updates, if longer: the feed is slow)...
+   */
   staleMs: 30_000,
+  staleUpdates: 2.5,
   /** ...then fade it out over this long. */
   fadeOutMs: 2000,
+  /**
+   * Aircraft in the latest update stay on screen however slow the next one is, unless
+   * no update has arrived for this long: then the feed is down and they all fade.
+   */
+  feedDownMs: 120_000,
   /** How long an aircraft takes to fade away after it lands. */
   landingFadeMs: 4000,
   /** An aircraft that vanishes from the feed below this altitude (feet) is assumed to have landed. */
@@ -101,7 +122,7 @@ export const MAP = {
 
   /** Size of the aircraft arrows, in pixels. */
   planeSize: 9,
-  /** Debug: mark where each arrival/departure is predicted to be when the next fetch lands. */
+  /** Debug: draw the path each arrival/departure will fly until the next fetch lands, on both maps. */
   showPredictions: false,
   /** Show callsign + altitude (hundreds of feet) next to each aircraft. */
   showLabels: true,
@@ -284,8 +305,13 @@ export function setConfigValue(path: string, value: unknown) {
   const keys = path.split('.')
   const last = keys.pop()!
   const parent = getConfigValue(keys.join('.')) as Record<string, unknown> | undefined
+  if (!parent || !(last in parent)) return
+  // Dropdowns hand over text, so "3" for a number setting is read as 3.
+  if (typeof parent[last] === 'number' && typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
+    value = Number(value)
+  }
   // Ignore paths that no longer exist (e.g. saved by an older version) or values of the wrong type.
-  if (!parent || !(last in parent) || typeof parent[last] !== typeof value) return
+  if (typeof parent[last] !== typeof value) return
   parent[last] = value
 }
 

@@ -32,7 +32,7 @@ import type { FlightKind } from './flights'
 import type { MapLayers } from './mapLayers'
 import { elevationAt, type Terrain } from './terrain'
 import { createProjection, drawTrackLabels, labelFont, renderBackground, type Point } from './renderer'
-import type { LatLon, Track } from './tracker'
+import { estimatedPath, predictedPath, type LatLon, type Track } from './tracker'
 
 const FT_PER_NM = 6076.12
 const LON_SCALE = Math.cos((CENTER.lat * Math.PI) / 180)
@@ -67,6 +67,10 @@ interface Craft {
   trail: Line
   curtain: Mesh
   route: Line
+  /** The rest of the current segment, when MAP.showPredictions is on. */
+  prediction: Line
+  /** Delayed view: from the latest report on to where the plane probably is now. */
+  estimate: Line
   /** Points in the trail buffers, how many they can hold, and the trail sample they were built from. */
   count: number
   capacity: number
@@ -97,6 +101,18 @@ export class Map3D {
     new BufferGeometry(),
     new PointsMaterial({
       size: DOT_PX,
+      sizeAttenuation: false,
+      map: roundDot(),
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  /** Debug: a dot at each report ahead of the arrivals and departures (MAP.showPredictions). */
+  private readonly waypoints = new Points(
+    new BufferGeometry(),
+    new PointsMaterial({
+      size: WAYPOINT_PX,
       sizeAttenuation: false,
       map: roundDot(),
       vertexColors: true,
@@ -135,6 +151,8 @@ export class Map3D {
     this.scene.add(this.drops)
     this.dots.frustumCulled = false
     this.scene.add(this.dots)
+    this.waypoints.frustumCulled = false
+    this.scene.add(this.waypoints)
 
     // North-up map with z as height.
     this.camera.up.set(0, 0, 1)
@@ -237,6 +255,8 @@ export class Map3D {
     const dropColors: number[] = []
     const dots: number[] = []
     const dotColors: number[] = []
+    const marks: number[] = []
+    const markColors: number[] = []
     const color = new Color()
 
     for (const t of tracks) {
@@ -253,12 +273,21 @@ export class Map3D {
       if (craft.mesh.geometry !== geometry) craft.mesh.geometry = geometry
       craft.mesh.position.set(x, y, z)
       craft.mesh.scale.setScalar(this.modelLength(craft.mesh.position, size.lengthM) / size.lengthM)
-      craft.mesh.rotation.set(rad(pitchOf(t.info)), rad(bankOf(t)), -rad(t.heading), 'ZXY')
+      craft.mesh.rotation.set(rad(pitchOf(t, MAP3D.altitudeScale)), rad(bankOf(t)), -rad(t.heading), 'ZXY')
       craft.material.color.copy(color)
       craft.material.opacity = opacity
 
       this.updateTrail(craft, t, color, opacity)
       this.updateRoute(craft, t, x, y, z, color, opacity)
+      this.updatePrediction(craft, t, x, y, z, color, opacity)
+      if (MAP.showPredictions && t.info.kind !== 'other') {
+        const path = predictedPath(t)
+        path.marks.forEach((m, i) => {
+          const l = local(m)
+          marks.push(l.x, l.y, heightOf(path.markAlts[i]))
+          markColors.push(color.r, color.g, color.b, 0.9 * opacity)
+        })
+      }
       if (craft.routeEnd && t.info.counterpart) {
         routeLabels.push({ at: craft.routeEnd, text: t.info.counterpart.city, color: kindColor(t.info.kind), opacity })
       }
@@ -283,6 +312,8 @@ export class Map3D {
     this.drops.geometry.setAttribute('color', new BufferAttribute(new Float32Array(dropColors), 4))
     this.dots.geometry.setAttribute('position', new BufferAttribute(new Float32Array(dots), 3))
     this.dots.geometry.setAttribute('color', new BufferAttribute(new Float32Array(dotColors), 4))
+    this.waypoints.geometry.setAttribute('position', new BufferAttribute(new Float32Array(marks), 3))
+    this.waypoints.geometry.setAttribute('color', new BufferAttribute(new Float32Array(markColors), 4))
     this.renderer.render(this.scene, this.camera)
 
     const ctx = this.labels
@@ -302,29 +333,38 @@ export class Map3D {
   // ---- Aircraft ---------------------------------------------------------------------
 
   private addCraft(t: Track): Craft {
-    const material = new MeshPhongMaterial({ flatShading: true, shininess: 40, transparent: true, side: DoubleSide })
+    // One pass: three.js otherwise draws a transparent double-sided material twice a frame, re-checking its shader each time.
+    const material = new MeshPhongMaterial({ flatShading: true, shininess: 40, transparent: true, side: DoubleSide, forceSinglePass: true })
     const mesh = new Mesh(new BufferGeometry(), material)
     mesh.frustumCulled = false
     const trail = new Line(new BufferGeometry(), new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }))
     const curtain = new Mesh(
       new BufferGeometry(),
-      new MeshBasicMaterial({ vertexColors: true, transparent: true, side: DoubleSide, depthWrite: false }),
+      new MeshBasicMaterial({ vertexColors: true, transparent: true, side: DoubleSide, depthWrite: false, forceSinglePass: true }),
     )
     const route = new Line(
       new BufferGeometry(),
       new LineDashedMaterial({ vertexColors: true, transparent: true, depthWrite: false, dashSize: 1.2, gapSize: 0.8 }),
     )
-    for (const o of [trail, curtain, route]) o.frustumCulled = false
-    this.scene.add(mesh, trail, curtain, route)
-    const craft: Craft = { mesh, material, trail, curtain, route, count: 0, capacity: 0, builtAt: -1, routeEnd: null }
+    const prediction = new Line(
+      new BufferGeometry(),
+      new LineDashedMaterial({ transparent: true, depthWrite: false, dashSize: 0.4, gapSize: 0.4 }),
+    )
+    const estimate = new Line(
+      new BufferGeometry(),
+      new LineDashedMaterial({ transparent: true, depthWrite: false, dashSize: 0.1, gapSize: 0.3 }),
+    )
+    for (const o of [trail, curtain, route, prediction, estimate]) o.frustumCulled = false
+    this.scene.add(mesh, trail, curtain, route, prediction, estimate)
+    const craft: Craft = { mesh, material, trail, curtain, route, prediction, estimate, count: 0, capacity: 0, builtAt: -1, routeEnd: null }
     this.crafts.set(t, craft)
     return craft
   }
 
   private removeCraft(t: Track, craft: Craft) {
-    this.scene.remove(craft.mesh, craft.trail, craft.curtain, craft.route)
+    this.scene.remove(craft.mesh, craft.trail, craft.curtain, craft.route, craft.prediction, craft.estimate)
     craft.material.dispose()
-    for (const o of [craft.trail, craft.curtain, craft.route]) {
+    for (const o of [craft.trail, craft.curtain, craft.route, craft.prediction, craft.estimate]) {
       o.geometry.dispose()
       ;(o.material as LineBasicMaterial).dispose()
     }
@@ -449,6 +489,17 @@ export class Map3D {
     craft.routeEnd = new Vector3(positions[last * 3], positions[last * 3 + 1], positions[last * 3 + 2])
   }
 
+  /**
+   * Debug: the rest of the current segment as a dashed line at altitude, like the
+   * 2D map's, and in the delayed view a dotted one on to where the plane probably is now.
+   */
+  private updatePrediction(craft: Craft, t: Track, x: number, y: number, z: number, color: Color, opacity: number) {
+    const on = MAP.showPredictions && t.info.kind !== 'other'
+    // The curve starts exactly on the aircraft.
+    setPathLine(craft.prediction, on ? predictedPath(t) : null, { x, y, z }, color, 0.8 * opacity)
+    setPathLine(craft.estimate, on ? estimatedPath(t) : null, null, color, 0.6 * opacity)
+  }
+
   private drawRouteLabels(items: { at: Vector3; text: string; color: string; opacity: number }[]) {
     const ctx = this.labels
     ctx.font = `${MAP.labelSize - 1}px ${MAP.fontFamily}`
@@ -541,6 +592,8 @@ function edgeFade() {
 
 /** Ground dots' size in pixels, and a soft round sprite for them (points are square otherwise). */
 const DOT_PX = 5
+/** Size of the report-ahead dots (MAP.showPredictions), in pixels. */
+const WAYPOINT_PX = 8
 
 function roundDot() {
   const size = 32
@@ -571,6 +624,35 @@ const GROUND_SEGMENTS = 255
 const FT_PER_M = 3.28084
 /** Route lines rise toward this altitude (feet) away from the airport. */
 const CRUISE_FT = 30_000
+
+/** Points a dashed line along `path` (at altitude), or hides it when null or empty. `start` overrides the first point. */
+function setPathLine(
+  line: Line,
+  path: { points: LatLon[]; alts: (number | null)[] } | null,
+  start: { x: number; y: number; z: number } | null,
+  color: Color,
+  opacity: number,
+) {
+  line.visible = !!path && path.points.length > 0
+  if (!path || !line.visible) return
+  const positions = new Float32Array(path.points.length * 3)
+  path.points.forEach((p, i) => {
+    const l = local(p)
+    positions.set(i === 0 && start ? [start.x, start.y, start.z] : [l.x, l.y, heightOf(path.alts[i])], i * 3)
+  })
+  const geometry = line.geometry
+  const attr = geometry.getAttribute('position') as BufferAttribute | undefined
+  if (attr?.count === path.points.length) {
+    attr.copyArray(positions)
+    attr.needsUpdate = true
+  } else {
+    geometry.setAttribute('position', new BufferAttribute(positions, 3))
+  }
+  line.computeLineDistances()
+  const material = line.material as LineDashedMaterial
+  material.color.copy(color)
+  material.opacity = opacity
+}
 
 function rad(deg: number) {
   return (deg * Math.PI) / 180

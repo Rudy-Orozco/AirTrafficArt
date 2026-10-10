@@ -16,7 +16,7 @@ export interface Aircraft {
   verticalRate: number | null
   /** ICAO type designator such as B738, or null if unknown. */
   aircraftType: string | null
-  /** Seconds since the position was received, so we can project it to the present. */
+  /** Seconds since the position was received (as of when the response arrived here), so we can project it to the present. */
   positionAge: number
   /** ADS-B emitter category: A1 light, A2 small, A3 large, A5 heavy, A7 rotorcraft... or null if not sent. */
   emitterCategory: string | null
@@ -56,6 +56,8 @@ const SOURCES = [
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000
 const restingUntil = new Map<string, number>()
 let currentSource = SOURCES[0].name
+/** Per source, the smallest gap yet between its snapshot time and the response arriving: its clock offset plus its quickest delivery. */
+const quickestDelivery = new Map<string, number>()
 
 /** The source the latest aircraft came from, for crediting it. */
 export function aircraftSource() {
@@ -78,7 +80,8 @@ export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
       })
       if (res.status === 429) restingUntil.set(source.name, Date.now() + RATE_LIMIT_COOLDOWN_MS)
       if (!res.ok) throw new Error(`${source.name}: HTTP ${res.status}`)
-      const aircraft = parseAircraft(await res.json())
+      const json = await res.json()
+      const aircraft = parseAircraft(json, deliveryDelay(source.name, json))
       currentSource = source.name
       return aircraft
     } catch (err) {
@@ -89,7 +92,24 @@ export async function fetchAircraft(signal: AbortSignal): Promise<Aircraft[]> {
   throw lastError
 }
 
-function parseAircraft(json: unknown): Aircraft[] {
+/**
+ * How much longer than its quickest this response took to arrive after the
+ * server's snapshot, in seconds: positions are that much older than their
+ * `seen_pos` says. Measured against the quickest rather than the clocks, which
+ * needn't agree. Responses vary by several seconds, which would otherwise read
+ * as planes moving faster or slower than they are.
+ */
+function deliveryDelay(source: string, json: unknown): number {
+  const now = (json as { now?: number }).now
+  if (typeof now !== 'number') return 0
+  // adsb.lol and adsb.fi send milliseconds; a readsb aircraft.json sends seconds.
+  const gap = Date.now() - (now < 1e12 ? now * 1000 : now)
+  const quickest = Math.min(quickestDelivery.get(source) ?? gap, gap)
+  quickestDelivery.set(source, quickest)
+  return (gap - quickest) / 1000
+}
+
+function parseAircraft(json: unknown, delaySeconds: number): Aircraft[] {
   // adsb.lol calls the list "ac"; adsb.fi and a local readsb aircraft.json call it "aircraft".
   const data = json as { ac?: RawAircraft[]; aircraft?: RawAircraft[] }
   const list = data.ac ?? data.aircraft ?? []
@@ -107,7 +127,7 @@ function parseAircraft(json: unknown): Aircraft[] {
       onGround: a.alt_baro === 'ground',
       verticalRate: a.baro_rate ?? a.geom_rate ?? null,
       aircraftType: a.t ?? null,
-      positionAge: a.seen_pos ?? 0,
+      positionAge: (a.seen_pos ?? 0) + delaySeconds,
       emitterCategory: a.category ?? null,
       isVehicle: a.category?.startsWith('C') ?? false,
     }))

@@ -4,7 +4,7 @@ import type { FlightKind } from './flights'
 import type { Radar } from './radar'
 import type { Terrain } from './terrain'
 import { leaderLine, newLabelState, updateLabels, type LabelItem, type LabelState } from './labels'
-import type { LatLon, Track } from './tracker'
+import { estimatedPath, predictedPath, type LatLon, type Track } from './tracker'
 
 export interface Point {
   x: number
@@ -49,6 +49,9 @@ export function createProjection(view: View, center: LatLon): Projection {
     y: view.cy - (lat - center.lat) * NM_PER_DEG_LAT * view.pxPerNm,
   })
 }
+
+/** Where the map credits and radar time start in the top-left corner, clear of the airport logo (AirportLogo.tsx). */
+const CORNER_TEXT_TOP = 96
 
 /**
  * Draws everything that never moves (backdrop, map, range rings) to an offscreen
@@ -144,10 +147,10 @@ function drawBasemap(ctx: CanvasRenderingContext2D, map: Basemap, project: Proje
   ctx.font = labelFont()
   ctx.letterSpacing = '0px'
   ctx.fillStyle = 'rgba(160, 180, 215, 0.25)'
-  // Top corner: the board covers the bottom (or right) of the map.
+  // Top corner, under the local clock: the board covers the bottom (or right) of the map.
   ctx.textBaseline = 'top'
   ctx.textAlign = 'left'
-  ctx.fillText(map.attribution, 12, 12)
+  ctx.fillText(map.attribution, 16, CORNER_TEXT_TOP)
   ctx.textBaseline = 'alphabetic'
 }
 
@@ -172,7 +175,7 @@ function drawRadar(ctx: CanvasRenderingContext2D, radar: Radar, project: Project
     ctx.textBaseline = 'top'
     ctx.textAlign = 'left'
     ctx.fillStyle = 'rgba(160, 180, 215, 0.4)'
-    ctx.fillText(`RADAR ${time}Z`, 12, 30)
+    ctx.fillText(`RADAR ${time}Z`, 16, CORNER_TEXT_TOP + 18)
     ctx.textBaseline = 'alphabetic'
   }
 }
@@ -220,22 +223,66 @@ export function drawTracks(ctx: CanvasRenderingContext2D, tracks: Iterable<Track
   ctx.globalAlpha = 1
 }
 
-/** Debug overlay: a dashed line from the plane to the point its current segment is heading for. */
+/**
+ * Debug overlay: the rest of the plane's current curve, dashed, ending in a ring
+ * where it'll be at the next fetch. In the delayed view the curve carries on
+ * through every report still ahead (a ring at each), then a dotted line on to a
+ * dot where it probably is now.
+ */
 function drawPrediction(ctx: CanvasRenderingContext2D, t: Track, pos: Point, project: Projection, color: string) {
-  const target = project(t.to)
+  const estimate = estimatedPath(t).points
+  if (estimate.length > 0) {
+    const now = project(estimate[estimate.length - 1])
+    ctx.save()
+    ctx.globalAlpha = t.opacity * 0.8
+    ctx.strokeStyle = color
+    ctx.fillStyle = color
+    ctx.lineWidth = 1
+    ctx.setLineDash([1, 3])
+    ctx.beginPath()
+    estimate.forEach((p, i) => {
+      const q = project(p)
+      if (i === 0) ctx.moveTo(q.x, q.y)
+      else ctx.lineTo(q.x, q.y)
+    })
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(now.x, now.y, 2.5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  const { points, marks } = predictedPath(t)
+  if (points.length === 0) return
   ctx.save()
   ctx.globalAlpha = t.opacity
   ctx.strokeStyle = color
-  ctx.lineWidth = 1
+  ctx.lineWidth = 1.5
   ctx.setLineDash([3, 3])
   ctx.beginPath()
   ctx.moveTo(pos.x, pos.y)
-  ctx.lineTo(target.x, target.y)
+  for (const p of points.slice(1)) {
+    const q = project(p)
+    ctx.lineTo(q.x, q.y)
+  }
   ctx.stroke()
   ctx.setLineDash([])
-  ctx.beginPath()
-  ctx.arc(target.x, target.y, 3, 0, Math.PI * 2)
-  ctx.stroke()
+  // A ring with a dot in it at each report ahead, outlined dark so it stands out over the map.
+  for (const m of marks) {
+    const q = project(m)
+    ctx.beginPath()
+    ctx.arc(q.x, q.y, 5, 0, Math.PI * 2)
+    ctx.lineWidth = 3.5
+    ctx.strokeStyle = 'rgba(3, 5, 10, 0.8)'
+    ctx.stroke()
+    ctx.lineWidth = 1.5
+    ctx.strokeStyle = color
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(q.x, q.y, 1.5, 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+  }
   ctx.restore()
 }
 

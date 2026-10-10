@@ -138,9 +138,14 @@ export function SettingsPanel() {
             ))}
           </div>
           <footer className="settings-footer">
-            {needsReload() && (
+            {/* Highlighted when a changed setting only applies after a reload. */}
+            {needsReload() ? (
               <button type="button" className="settings-action is-primary" onClick={() => window.location.reload()}>
                 Reload to apply
+              </button>
+            ) : (
+              <button type="button" className="settings-action" onClick={() => window.location.reload()}>
+                Reload page
               </button>
             )}
             <button type="button" className="settings-action" onClick={resetSettings}>

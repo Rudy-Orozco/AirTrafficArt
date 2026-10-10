@@ -1,6 +1,6 @@
 import { DIORAMA, FEED, MOTION } from './config'
 import type { Flight } from './flights'
-import type { Handoff, LatLon } from './tracker'
+import { overdueFor, type Handoff, type LatLon } from './tracker'
 
 export interface GroundTrack {
   info: Flight
@@ -44,10 +44,13 @@ export interface GroundTrack {
 export class GroundTracker {
   readonly tracks = new Map<string, GroundTrack>()
   private lastIngest: number | null = null
+  /** Running average of the time between updates (for how long to keep missing aircraft). */
+  private gapMs = FEED.pollMs
 
   /** `handoff` gives where a just-landed aircraft was drawn in the air. */
   ingest(flights: Flight[], now: number, handoff: (hex: string) => Handoff | null = () => null) {
     const segmentMs = this.lastIngest === null ? 0 : Math.min(now - this.lastIngest, FEED.pollMs * 2)
+    if (this.lastIngest !== null) this.gapMs += (now - this.lastIngest - this.gapMs) * GAP_SMOOTHING
     this.lastIngest = now
 
     for (const f of flights) {
@@ -63,7 +66,8 @@ export class GroundTracker {
       // like the airborne tracker does, and the two line up at liftoff and touchdown.
       // Easing from predicting a whole fetch ahead (runway speed) down to none
       // (taxi speed) keeps a slowing plane from lurching back as it turns off.
-      const lead = clamp(((f.groundSpeed ?? 0) - TAXI_SPEED_KT) / (RUNWAY_SPEED_KT - TAXI_SPEED_KT), 0, 1)
+      // The delayed view never predicts ahead, so liftoff hands over a position behind the first airborne report.
+      const lead = MOTION.delayed ? 0 : clamp(((f.groundSpeed ?? 0) - TAXI_SPEED_KT) / (RUNWAY_SPEED_KT - TAXI_SPEED_KT), 0, 1)
       const predicted = lead > 0 && f.track !== null
       const reported = predicted ? ahead(f, f.positionAge * 1000 + lead * (segmentMs || FEED.pollMs)) : { lat: f.lat, lon: f.lon }
       const stopped = (f.groundSpeed ?? 0) < DIORAMA.parkedSpeedKt
@@ -116,9 +120,9 @@ export class GroundTracker {
   /** Advance every track to `now`. Call once per animation frame. */
   step(now: number) {
     for (const [hex, t] of this.tracks) {
-      const missingFor = now - t.lastSeen
       const keepFor = t.parked ? DIORAMA.keepParkedMs : DIORAMA.staleMs
-      if (missingFor > keepFor + MOTION.fadeOutMs) {
+      const overdue = overdueFor(now, t.lastSeen, this.lastIngest, this.gapMs, keepFor)
+      if (overdue > MOTION.fadeOutMs) {
         this.tracks.delete(hex)
         continue
       }
@@ -129,7 +133,7 @@ export class GroundTracker {
       t.heightFt = t.fromHeightFt * (1 - u)
 
       const fadeIn = Math.min((now - t.firstSeen) / MOTION.fadeInMs, 1)
-      const fadeOut = 1 - Math.min(Math.max((missingFor - keepFor) / MOTION.fadeOutMs, 0), 1)
+      const fadeOut = 1 - Math.min(Math.max(overdue / MOTION.fadeOutMs, 0), 1)
       t.opacity = Math.min(fadeIn, fadeOut)
     }
   }
@@ -141,6 +145,8 @@ export class GroundTracker {
   }
 }
 
+/** How much each new gap between updates moves the running average (0 to 1). */
+const GAP_SMOOTHING = 0.3
 /** Ground speed (knots) of a takeoff or landing roll, predicted a whole fetch ahead... */
 const RUNWAY_SPEED_KT = 40
 /** ...down to taxiing, which runs a fetch behind instead. */

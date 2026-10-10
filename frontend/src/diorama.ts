@@ -438,7 +438,7 @@ export function drawDioramaAircraft(
     const at = { ...local, z: Math.max(heightFt, 0) * M_PER_FT * view.altitudeScale }
     const color = kindColor(t.info.kind)
     const opacity = t.opacity * (t.info.kind === 'other' ? MAP.otherOpacity : 1)
-    poses.push({ id: `a${t.info.hex}`, info: t.info, at, heading: t.heading, pitch: pitchOf(t.info), bank: bankOf(t), color, opacity })
+    poses.push({ id: `a${t.info.hex}`, info: t.info, at, heading: t.heading, pitch: pitchOf(t, view.altitudeScale), bank: bankOf(t), color, opacity })
     items.push({
       depth: view.depth(at),
       draw: () => {
@@ -481,11 +481,19 @@ export interface AircraftPose {
 const G = 9.81
 const KT_TO_MS = 0.514444
 
-/** Climb or descent angle from vertical rate and ground speed, in degrees. */
-export function pitchOf(f: Flight) {
-  if (!f.verticalRate || !f.groundSpeed) return 0
-  const climb = (f.verticalRate * M_PER_FT) / 60
-  return clampDeg((Math.atan2(climb, f.groundSpeed * KT_TO_MS) * 180) / Math.PI, 15)
+/** Most airliners fly a couple of degrees nose-up even in level flight or on a descending approach. */
+const NOSE_UP_DEG = 2
+
+/**
+ * Pitch for the drawn climb or descent, in degrees. `verticalScale` is how much
+ * the view exaggerates altitude, so the nose follows the path as it's drawn
+ * (along the trail) rather than the real, much shallower angle.
+ */
+export function pitchOf(t: Track, verticalScale: number) {
+  if (!t.info.groundSpeed) return 0
+  const climb = (t.climbing * M_PER_FT * 1000) * verticalScale
+  const path = (Math.atan2(climb, t.info.groundSpeed * KT_TO_MS) * 180) / Math.PI
+  return clampDeg(path + NOSE_UP_DEG, 30)
 }
 
 /** Bank angle for a coordinated turn at the drawn path's turn rate and speed, in degrees. */

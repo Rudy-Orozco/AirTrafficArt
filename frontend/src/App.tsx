@@ -2,7 +2,9 @@ import { useRef, useState } from 'react'
 import { AirportDiorama } from './AirportDiorama'
 import { AirTraffic3D } from './AirTraffic3D'
 import { AirTrafficCanvas } from './AirTrafficCanvas'
+import { AirportLogo } from './AirportLogo'
 import { Board } from './Board'
+import { BootScreen } from './BootScreen'
 import { DIORAMA, MAP } from './config'
 import { GroundTracker } from './groundTracker'
 import { useSettingsVersion } from './settings'
@@ -13,7 +15,7 @@ import { useAircraftFeed } from './useAircraftFeed'
 export default function App() {
   const [tracker] = useState(() => new Tracker())
   const [ground] = useState(() => new GroundTracker())
-  const { status, board } = useAircraftFeed(tracker, ground)
+  const { status, board, boot } = useAircraftFeed(tracker, ground)
   const boardRef = useRef<HTMLElement>(null)
   // Re-render on settings changes so the board and the 3D view toggle pick them up.
   useSettingsVersion()
@@ -26,7 +28,9 @@ export default function App() {
         <AirTrafficCanvas tracker={tracker} overlay={boardRef} />
       )}
       {DIORAMA.enabled && <AirportDiorama tracker={tracker} ground={ground} />}
+      <AirportLogo />
       <Board board={board} status={status} ref={boardRef} />
+      <BootScreen boot={boot} />
       <SettingsPanel />
     </main>
   )

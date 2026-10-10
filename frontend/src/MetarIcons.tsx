@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { Metar } from './metar'
 
 /**
@@ -17,8 +17,10 @@ function Icon({ children, label }: { children: ReactNode; label: string }) {
 /**
  * Wind barb: the staff points into the wind (the direction it blows from).
  * Pennant = 50 kt, full barb = 10 kt, half barb = 5 kt. Calm is a double circle.
+ * Streaks drift away downwind, faster the stronger it blows, pulsing when it gusts;
+ * variable wind's dashed ring slowly turns.
  */
-export function WindIcon({ wdir, wspd }: Metar) {
+export function WindIcon({ wdir, wspd, wgst }: Metar) {
   if (!wspd) {
     return (
       <Icon label="Calm">
@@ -31,7 +33,7 @@ export function WindIcon({ wdir, wspd }: Metar) {
     return (
       <Icon label="Variable wind">
         <circle cx="12" cy="12" r="2" />
-        <circle cx="12" cy="12" r="8" strokeDasharray="2.5 2.5" />
+        <circle className="wind-variable" cx="12" cy="12" r="8" strokeDasharray="2.5 2.5" />
       </Icon>
     )
   }
@@ -56,16 +58,33 @@ export function WindIcon({ wdir, wspd }: Metar) {
     marks.push(<line key={`h${y}`} x1="12" y1={y} x2="15.5" y2={y - 1} />)
   }
 
+  // Each streak takes this long to drift past: about 2.4 s in a breeze, down to 0.6 s in a gale.
+  const flowS = Math.min(Math.max(2.6 - wspd / 20, 0.6), 2.4)
+  const flow = { '--wind-flow': `${flowS}s` } as CSSProperties
+
   return (
     <Icon label={`Wind from ${wdir}°`}>
       <g transform={`rotate(${wdir} 12 12)`}>
         <line x1="12" y1="12" x2="12" y2="1.5" />
         {marks}
+        {/* Downwind of the station (below the staff before rotating), where the icon is empty. */}
+        <g className={`wind-streaks${wgst ? ' is-gusting' : ''}`} style={flow} aria-hidden>
+          {STREAKS.map(([x, delay]) => (
+            <line key={x} x1={x} y1="14.5" x2={x} y2="18" style={{ animationDelay: `${delay * flowS}s` }} />
+          ))}
+        </g>
       </g>
       <circle cx="12" cy="12" r="2" className="filled" />
     </Icon>
   )
 }
+
+/** Streak positions across the wind, and how far through the cycle each starts (so they don't move in step). */
+const STREAKS: [number, number][] = [
+  [8.5, -0.55],
+  [12, 0],
+  [15.5, -0.3],
+]
 
 /** An eye in good visibility; fog lines under 3 statute miles. */
 export function VisibilityIcon({ visib }: Metar) {
