@@ -1,5 +1,3 @@
-/* ---- 3D airport view: top-right corner of the map ------------------------------ */
-
 /* The panel and its backdrop share a placement (dragging sets both inline). */
 .diorama,
 .diorama-backdrop {
@@ -274,3 +272,14 @@
   }
 }
 
+/* Locked: clicks go straight through to the map, and the handles stay hidden. */
+.diorama.is-locked {
+  pointer-events: none;
+}
+
+.diorama.is-locked .diorama-move,
+.diorama.is-locked .diorama-resize,
+.diorama.is-locked .diorama-reset,
+.diorama.is-locked::after {
+  display: none;
+}

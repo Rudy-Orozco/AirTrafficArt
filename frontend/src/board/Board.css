@@ -1,4 +1,105 @@
-/* ---- Panel -------------------------------------------------------------------- */
+.board {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding-top: 12vh;
+  /* Text scales with the board's own width (cqi), so it fits either layout. */
+  container-type: inline-size;
+  background: linear-gradient(to bottom, rgb(3 5 10 / 0), rgb(3 5 10 / 0.82) 7vh, rgb(3 5 10 / 0.95) 12vh);
+}
+
+/* Landscape windows: the board floats over the right side instead. */
+@media (min-aspect-ratio: 1/1) {
+  .board {
+    top: 0;
+    left: auto;
+    box-sizing: border-box;
+    width: min(54%, 880px);
+    display: flex;
+    flex-direction: column;
+    /* Centered, but never pushed off the top if it's taller than the screen. */
+    justify-content: safe center;
+    overflow-y: auto;
+    /* Clear of the toolbar buttons in the top-right corner. */
+    padding-top: 56px;
+    padding-bottom: 8px;
+    padding-left: 10vw;
+    background: linear-gradient(to right, rgb(3 5 10 / 0), rgb(3 5 10 / 0.82) 6vw, rgb(3 5 10 / 0.95) 10vw);
+  }
+}
+
+.board-inner {
+  /* Two 37-character boards side by side: ~16px on a 1080px-wide portrait screen. */
+  font: 500 clamp(9px, min(1.5cqi, var(--board-max-font)), 22px) / 1.2 var(--mono);
+  --cell: 0.8em;
+  color: var(--text);
+  padding: 0 1.2em;
+}
+
+.board-top {
+  display: flex;
+  /* The airport name lines up with the bottom of the clock (its zone and date). */
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 1.1em;
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid var(--text);
+}
+
+.board-top b {
+  font: 900 2.4em / 1 var(--sans);
+  letter-spacing: -0.03em;
+}
+
+.board-airport {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6em;
+}
+
+/* Same small type as the footer. */
+.board-airport small {
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
+/* Local time, right of the airport name: a small label, the time, then zone and date. */
+.board-clock {
+  text-align: right;
+}
+
+.board-clock-label {
+  font: 600 0.55em / 1.4 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.board-clock-time {
+  display: block;
+  font: 300 2.4em / 1 var(--sans);
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.02em;
+}
+
+.board-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6em;
+}
+
+/* Too narrow for two boards side by side: stack them. */
+@container (max-width: 760px) {
+  .board-inner {
+    font-size: clamp(9px, min(2.9cqi, var(--board-max-font)), 22px);
+  }
+
+  .board-panels {
+    grid-template-columns: 1fr;
+  }
+}
 
 .panel {
   --accent: var(--arrival);
@@ -73,25 +174,10 @@
   list-style: none;
 }
 
-/* ---- Rows ------------------------------------------------------------------------- */
-
 /* Each row is one solid bar; the characters on it still flip individually. */
 .row {
   padding: 0 calc(var(--cell) * 0.75);
   background: var(--row);
-}
-
-.flaps {
-  display: flex;
-}
-
-.flap {
-  flex: none;
-  width: var(--cell);
-  height: 1.45em;
-  line-height: 1.45em;
-  text-align: center;
-  font-weight: 600;
 }
 
 .row-status .flap {
@@ -101,8 +187,6 @@
 .row.is-landed .row-status .flap {
   color: var(--text);
 }
-
-/* ---- Footer ---------------------------------------------------------------------- */
 
 .board-footer {
   position: relative;
@@ -180,4 +264,3 @@
     stroke-dashoffset: 1;
   }
 }
-

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AIRPORT, AIRPORT_PRESET } from '../config/config'
 import type { BootState, BootStep } from '../feed/useAircraftFeed'
+import './BootScreen.css'
 
 /** How long a step that's taking longer than expected is guessed to still need. */
 const OVERRUN_GUESS_MS = 1500

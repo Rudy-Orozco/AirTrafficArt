@@ -17,6 +17,7 @@ import type { GroundTracker } from '../tracking/groundTracker'
 import { LockIcon } from '../ui/icons'
 import { LOCK_SETTING, RESET_DIORAMA_EVENT, setSetting, settingsVersion } from '../config/settings'
 import type { Tracker } from '../tracking/tracker'
+import './AirportDiorama.css'
 
 /** Where the panel sits and how big it is, in pixels. */
 interface Placement {

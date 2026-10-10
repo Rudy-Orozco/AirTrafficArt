@@ -1,5 +1,3 @@
-/* ---- Startup screen ---------------------------------------------------------- */
-
 /* Over the map and board, under the toolbar and settings (z-index 3). */
 .boot {
   position: absolute;

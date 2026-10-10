@@ -1,0 +1,22 @@
+/* The airport's logo, over the map in the top-left corner, on a white plate like a sign. */
+.airport-logo {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  z-index: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+  height: 72px;
+  max-width: min(320px, 40vw);
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.4);
+}
+
+.airport-logo img {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}

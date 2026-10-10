@@ -7,6 +7,7 @@ import { MetarStrip } from '../weather/MetarStrip'
 import { formatLocalDate, formatLocalTime, localZoneName } from './localTime'
 import { useTick } from '../lib/useTick'
 import type { FeedStatus } from '../feed/useAircraftFeed'
+import './Board.css'
 
 type BoardKind = 'arrivals' | 'departures'
 

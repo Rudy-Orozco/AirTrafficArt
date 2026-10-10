@@ -30,6 +30,7 @@ frontend/
   public/logos/        airport logos
   src/
     App.tsx            top-level layout: maps, diorama, board, settings
+    index.css          global styles: fonts, color variables, page and shared map canvas
     config/            tunable defaults (config.ts) and the live settings store (settings.ts)
     feed/              fetching aircraft and routes, and the polling hook
     tracking/          flight classification, smoothed air and ground tracks
@@ -41,9 +42,11 @@ frontend/
     weather/           METAR and ATIS: parsing, strips and icons
     ui/                boot screen, settings panel, logo, icons
     lib/               small shared helpers (hooks, layout, desktop bridge)
-    styles/            CSS, one file per area; index.css imports them in cascade order
 scripts/               Python tools that build basemaps and airport layouts from OpenStreetMap
 ```
+
+Each component's styles sit next to it (`Board.tsx` + `Board.css`) and are imported
+by the component. Shared variables (`--bg`, `--text`, fonts) live in `src/index.css`.
 
 ## Adding an airport
 

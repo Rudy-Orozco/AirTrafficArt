@@ -46,13 +46,10 @@ body,
   height: 100%;
 }
 
-/* The 2D map can be dragged to pan. */
-.radar.map2d {
-  cursor: grab;
-  touch-action: none;
+/* Landscape windows: the board floats over the right side instead. */
+@media (min-aspect-ratio: 1/1) {
+  .app {
+    /* Sized so weather, ATIS and both boards fit the height, even on a 768px-tall laptop. */
+    --board-max-font: 1.8vh;
+  }
 }
-
-.radar.map2d.is-dragging {
-  cursor: grabbing;
-}
-

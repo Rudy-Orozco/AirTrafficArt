@@ -1,0 +1,9 @@
+/* The 2D map can be dragged to pan. */
+.radar.map2d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map2d.is-dragging {
+  cursor: grabbing;
+}

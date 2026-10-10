@@ -5,6 +5,7 @@ import { watchMapLayers, type MapLayers } from '../map/mapLayers'
 import { labelFont } from '../map/renderer'
 import { RESET_CAMERA_EVENT, settingsVersion } from '../config/settings'
 import type { Tracker } from '../tracking/tracker'
+import './AirTraffic3D.css'
 
 /**
  * The 3D map: a full-screen WebGL scene (see map3d.ts) with a 2D canvas over it

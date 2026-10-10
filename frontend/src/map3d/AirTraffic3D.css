@@ -1,0 +1,13 @@
+/* The 3D map takes drags (orbit/pan/zoom); its label layer lets them through. */
+.radar.map3d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map3d:active {
+  cursor: grabbing;
+}
+
+.radar.map3d-labels {
+  pointer-events: none;
+}

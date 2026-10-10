@@ -1,0 +1,12 @@
+.flaps {
+  display: flex;
+}
+
+.flap {
+  flex: none;
+  width: var(--cell);
+  height: 1.45em;
+  line-height: 1.45em;
+  text-align: center;
+  font-weight: 600;
+}

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { Metar } from './metar'
+import './MetarIcons.css'
 
 /**
  * Small line icons for the weather readings, drawn in currentColor on a 24×24

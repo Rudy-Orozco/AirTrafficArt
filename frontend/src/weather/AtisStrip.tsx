@@ -3,6 +3,7 @@ import { atisSentences, useAtis, type Atis } from './atis'
 import { AIRPORT_PRESET, ATIS } from '../config/config'
 import { useTick } from '../lib/useTick'
 import { FlapText } from '../board/FlapText'
+import './AtisStrip.css'
 
 const LABELS: Record<Atis['type'], string> = { arr: 'Arr', dep: 'Dep', combined: 'ATIS' }
 const SLIDE_MS = 700

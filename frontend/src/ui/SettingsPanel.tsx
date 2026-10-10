@@ -13,6 +13,7 @@ import {
   useSettingsVersion,
   type Setting,
 } from '../config/settings'
+import './SettingsPanel.css'
 
 /**
  * Gear button in the top-right corner that opens a panel for changing the

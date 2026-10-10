@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AIRPORT_PRESET } from '../config/config'
+import './AirportLogo.css'
 
 /**
  * The airport's official logo in the top-left corner of the screen, on a white

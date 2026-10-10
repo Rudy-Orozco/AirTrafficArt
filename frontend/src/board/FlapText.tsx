@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { BOARD } from '../config/config'
+import './FlapText.css'
 
 const CHARSET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 

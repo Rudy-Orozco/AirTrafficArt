@@ -18,6 +18,7 @@ import {
   VisibilityIcon,
   WindIcon,
 } from './MetarIcons'
+import './MetarStrip.css'
 
 /** Reports older than this are probably missing an update, so their age is highlighted. */
 const STALE_MINUTES = 90

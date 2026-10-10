@@ -1,5 +1,3 @@
-/* ---- Settings: gear button and panel, top right ------------------------------------ */
-
 /* Round buttons along the top-right corner: lock, then settings. */
 .toolbar-button {
   position: absolute;
@@ -28,20 +26,6 @@
   right: 54px;
   font: 600 11px var(--sans);
   letter-spacing: 0.04em;
-}
-
-/* The 3D map takes drags (orbit/pan/zoom); its label layer lets them through. */
-.radar.map3d {
-  cursor: grab;
-  touch-action: none;
-}
-
-.radar.map3d:active {
-  cursor: grabbing;
-}
-
-.radar.map3d-labels {
-  pointer-events: none;
 }
 
 .terrain-button {
@@ -100,18 +84,6 @@
 
 .terrain-button.is-on {
   border-color: var(--text-dim);
-}
-
-/* Locked: clicks go straight through to the map, and the handles stay hidden. */
-.diorama.is-locked {
-  pointer-events: none;
-}
-
-.diorama.is-locked .diorama-move,
-.diorama.is-locked .diorama-resize,
-.diorama.is-locked .diorama-reset,
-.diorama.is-locked::after {
-  display: none;
 }
 
 .settings-button.is-open {
@@ -334,4 +306,3 @@
   padding: 4px 16px 12px;
   border-top: 1px solid var(--line);
 }
-

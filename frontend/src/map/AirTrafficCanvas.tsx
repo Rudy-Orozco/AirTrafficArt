@@ -5,6 +5,7 @@ import { createProjection, createView, drawTracks, labelFont, renderBackground }
 import { settingsVersion } from '../config/settings'
 import type { Tracker } from '../tracking/tracker'
 import { uncoveredArea } from '../lib/layout'
+import './AirTrafficCanvas.css'
 
 /**
  * Full-screen map canvas driven by requestAnimationFrame. All per-frame work

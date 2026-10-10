@@ -1,5 +1,3 @@
-/* ---- ATIS --------------------------------------------------------------------------- */
-
 .atis {
   display: flex;
   align-items: center;
@@ -19,9 +17,11 @@
   flex: none;
   color: var(--accent);
 }
+
 .atis-code--arr {
   --accent: var(--arrival);
 }
+
 .atis-code--dep {
   --accent: var(--departure);
 }
@@ -86,32 +86,3 @@
   flex: none;
   color: var(--text-dim);
 }
-
-.board-top {
-  display: flex;
-  /* The airport name lines up with the bottom of the clock (its zone and date). */
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 1.1em;
-  padding-bottom: 0.3em;
-  border-bottom: 2px solid var(--text);
-}
-
-.board-top b {
-  font: 900 2.4em / 1 var(--sans);
-  letter-spacing: -0.03em;
-}
-
-.board-airport {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6em;
-}
-
-/* Same small type as the footer. */
-.board-airport small {
-  font-size: 0.6em;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-}
-
