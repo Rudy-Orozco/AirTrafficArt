@@ -88,6 +88,8 @@ export class Map3D {
   private readonly renderer: WebGLRenderer
   private readonly scene = new Scene()
   private readonly camera = new PerspectiveCamera(40, 1, 0.05, 2000)
+  /** When the last frame was drawn, for a steady orbit speed whatever the frame rate. */
+  private lastFrame = performance.now()
   private readonly controls: OrbitControls
   private readonly ground: Mesh<PlaneGeometry, MeshBasicMaterial>
   /** Set while terrain is on and loaded: the ground is raised to match it. */
@@ -240,7 +242,15 @@ export class Map3D {
 
   /** Draws one frame. Call after the tracker has stepped. */
   render(tracks: Iterable<Track>) {
-    this.controls.update()
+    // Orbit (MAP3D.orbit): OrbitControls circles the target, holding tilt and distance.
+    // A positive speed moves the camera clockwise seen from above.
+    const now = performance.now()
+    const dt = Math.min((now - this.lastFrame) / 1000, 0.1)
+    this.lastFrame = now
+    if (this.controls.autoRotate && !MAP3D.orbit) this.saveCamera()
+    this.controls.autoRotate = MAP3D.orbit
+    this.controls.autoRotateSpeed = ((MAP3D.orbitDirection === 'counterclockwise' ? -1 : 1) * MAP3D.orbitSpeed) / 6
+    this.controls.update(dt)
     // Fog only the far side of the map, however far out the camera is zoomed;
     // fixed distances would darken the whole map when zoomed out.
     const fog = this.scene.fog as Fog
@@ -323,6 +333,7 @@ export class Map3D {
   }
 
   dispose() {
+    if (this.controls.autoRotate) this.saveCamera()
     for (const [t, craft] of this.crafts) this.removeCraft(t, craft)
     this.controls.dispose()
     this.ground.material.map?.dispose()

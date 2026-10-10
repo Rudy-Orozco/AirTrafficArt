@@ -40,6 +40,11 @@
   right: 180px;
 }
 
+/* 3D map only; the zoom control moves over to make room. */
+.orbit-button {
+  right: 222px;
+}
+
 /* − 100% + page zoom (desktop app), left of the round buttons. */
 .zoom-control {
   position: absolute;
@@ -52,6 +57,10 @@
   border-radius: 17px;
   background: rgb(3 5 10 / 0.6);
   overflow: hidden;
+}
+
+.zoom-control.is-shifted {
+  right: 264px;
 }
 
 .zoom-control button {
@@ -78,11 +87,13 @@
 .toolbar-button:hover,
 .settings-button.is-open,
 .terrain-button.is-on,
+.orbit-button.is-on,
 .fullscreen-button.is-on {
   color: var(--text);
 }
 
-.terrain-button.is-on {
+.terrain-button.is-on,
+.orbit-button.is-on {
   border-color: var(--text-dim);
 }
 
@@ -216,9 +227,28 @@
   accent-color: #4ea2ff;
 }
 
-.settings-range output {
-  min-width: 46px;
+.settings-range .settings-number {
+  width: 54px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: 400 12px var(--mono);
   text-align: right;
+  accent-color: auto;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.settings-range .settings-number::-webkit-inner-spin-button,
+.settings-range .settings-number::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.settings-unit {
+  min-width: 22px;
   font: 400 12px var(--mono);
   color: var(--text-dim);
 }

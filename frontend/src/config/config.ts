@@ -184,6 +184,12 @@ export const MAP3D = {
   routeLengthNm: 120,
   /** Keep aircraft the same size on screen at any zoom, instead of a fixed size in the world that grows as you zoom in. */
   fixedScreenSize: false,
+  /** Slowly circle the camera around the point it looks at, keeping its tilt and distance (the orbit button). */
+  orbit: false,
+  /** Which way the camera circles, seen from above. */
+  orbitDirection: 'clockwise' as 'clockwise' | 'counterclockwise',
+  /** How fast it circles, in degrees per second. */
+  orbitSpeed: 4,
 }
 
 // ---- 3D airport view ----------------------------------------------------------------

@@ -47,6 +47,14 @@ export const TERRAIN_SETTING: Setting = {
   type: 'toggle',
 }
 
+/** Also toggled by the orbit button in the toolbar (3D map). */
+export const ORBIT_SETTING: Setting = {
+  path: 'MAP3D.orbit',
+  label: 'Orbit',
+  hint: 'Circle around the point the camera looks at',
+  type: 'toggle',
+}
+
 /** Also toggled by the lock button next to the settings button. */
 export const LOCK_SETTING: Setting = {
   path: 'DIORAMA.locked',
@@ -144,7 +152,23 @@ export const SETTING_TABS: { title: string; groups: SettingGroup[] }[] = [
           { path: 'MAP3D.routeLengthNm', label: 'Length', type: 'range', min: 20, max: 500, step: 10, unit: 'nm' },
         ],
       },
-      { title: 'Camera', settings: [], action: { label: 'Reset camera', run: resetMapCamera } },
+      {
+        title: 'Camera',
+        settings: [
+          ORBIT_SETTING,
+          {
+            path: 'MAP3D.orbitDirection',
+            label: 'Orbit direction',
+            hint: 'Seen from above',
+            type: 'select',
+            options: [
+              { value: 'clockwise', label: 'Clockwise' },
+              { value: 'counterclockwise', label: 'Counterclockwise' },
+            ],
+          },
+          { path: 'MAP3D.orbitSpeed', label: 'Orbit speed', type: 'range', min: 0.01, max: 30, step: 0.01, unit: '°/s' },
+        ],
+        action: { label: 'Reset camera', run: resetMapCamera } },
     ],
   },
   {

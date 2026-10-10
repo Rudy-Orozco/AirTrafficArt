@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react'
-import { DIORAMA, MAP } from '../config/config'
+import { DIORAMA, MAP, MAP3D } from '../config/config'
 import { desktop } from '../lib/desktop'
 import {
   getSetting,
   needsReload,
+  ORBIT_SETTING,
   resetDioramaPlacement,
   resetSettings,
   setSetting,
@@ -47,9 +48,22 @@ export function SettingsPanel() {
 
   const is3d = MAP.view === '3d'
   const terrain = MAP.terrain
+  const orbit = MAP3D.orbit
   return (
     <>
-      {desktop && <ZoomControl />}
+      {desktop && <ZoomControl shifted={is3d} />}
+      {is3d && (
+        <button
+          type="button"
+          className={`toolbar-button orbit-button${orbit ? ' is-on' : ''}`}
+          aria-label={orbit ? 'Stop orbiting' : 'Orbit'}
+          aria-pressed={orbit}
+          title={orbit ? 'Stop orbiting' : 'Orbit around the point the camera looks at (direction and speed in Settings › 3D Map)'}
+          onClick={() => setSetting(ORBIT_SETTING, !orbit)}
+        >
+          <OrbitIcon />
+        </button>
+      )}
       {DIORAMA.enabled && (
         <button
           type="button"
@@ -163,7 +177,7 @@ export function SettingsPanel() {
  * − 100% + : page zoom, like Ctrl+scroll (desktop app only; a web page can't
  * change the browser's zoom). Clicking the percentage goes back to 100%.
  */
-function ZoomControl() {
+function ZoomControl({ shifted }: { shifted: boolean }) {
   const [factor, setFactor] = useState(1)
   useEffect(() => {
     desktop!.zoomFactor().then(setFactor, () => {})
@@ -172,7 +186,7 @@ function ZoomControl() {
   const zoom = (direction: number) => desktop!.zoom(direction).then(setFactor, () => {})
   const percent = `${Math.round(factor * 100)}%`
   return (
-    <div className="zoom-control" role="group" aria-label="Page zoom">
+    <div className={`zoom-control${shifted ? ' is-shifted' : ''}`} role="group" aria-label="Page zoom">
       <button type="button" aria-label="Zoom out" title="Zoom out (Ctrl+minus, Ctrl+scroll)" onClick={() => zoom(-1)}>
         −
       </button>
@@ -268,14 +282,49 @@ function Control({ id, setting, value }: { id: string; setting: Setting; value: 
             value={shown}
             onChange={(e) => setSetting(setting, Math.round(Number(e.target.value) * scale * 1000) / 1000)}
           />
-          <output htmlFor={id}>
-            {formatNumber(shown)}
-            {setting.unit && ` ${setting.unit}`}
-          </output>
+          <NumberField setting={setting} shown={shown} />
+          {setting.unit && <span className="settings-unit">{setting.unit}</span>}
         </span>
       )
     }
   }
+}
+
+/**
+ * The slider's value, which can also be typed in. Applied on Enter or when
+ * leaving the field, kept between the slider's ends; Esc puts it back.
+ */
+function NumberField({ setting, shown }: { setting: Extract<Setting, { type: 'range' }>; shown: number }) {
+  const scale = setting.scale ?? 1
+  const [draft, setDraft] = useState<string | null>(null)
+  const commit = () => {
+    if (draft === null) return
+    const typed = Number(draft)
+    setDraft(null)
+    if (draft.trim() === '' || !Number.isFinite(typed)) return
+    const value = Math.min(setting.max, Math.max(setting.min, typed * scale))
+    setSetting(setting, Math.round(value * 1000) / 1000)
+  }
+  return (
+    <input
+      type="number"
+      className="settings-number"
+      aria-label={`${setting.label}${setting.unit ? ` (${setting.unit})` : ''}`}
+      min={setting.min / scale}
+      max={setting.max / scale}
+      step={setting.step / scale}
+      value={draft ?? formatNumber(shown)}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit()
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          setDraft(null)
+        }
+      }}
+    />
+  )
 }
 
 function formatNumber(n: number) {
@@ -304,6 +353,17 @@ function FullScreenIcon({ exit }: { exit: boolean }) {
             : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'
         }
       />
+    </svg>
+  )
+}
+
+/** A dot with an arrow circling it. */
+function OrbitIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="2" fill="currentColor" />
+      <path d="M19.5 9.5A8 8 0 1 0 20 13" />
+      <path d="M21.5 6.5l-2 3-3-1.5" />
     </svg>
   )
 }
