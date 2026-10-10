@@ -43,6 +43,8 @@ export interface Track {
   lastStep: number
   opacity: number
   trail: LatLon[]
+  /** Altitude (feet, or null) at each trail point, for the 3D map. */
+  trailAlt: (number | null)[]
   lastTrailAt: number
 }
 
@@ -150,6 +152,7 @@ export class Tracker {
           lastStep: now,
           opacity: 0,
           trail: [],
+          trailAlt: [],
           lastTrailAt: now,
         })
         continue
@@ -218,7 +221,11 @@ export class Tracker {
 
       if (now - t.lastTrailAt >= TRAIL_SAMPLE_MS) {
         t.trail.push(t.pos)
-        if (t.trail.length > (MAP.trailSeconds * 1000) / TRAIL_SAMPLE_MS) t.trail.shift()
+        t.trailAlt.push(t.altitude)
+        while (t.trail.length > (MAP.trailSeconds * 1000) / TRAIL_SAMPLE_MS) {
+          t.trail.shift()
+          t.trailAlt.shift()
+        }
         t.lastTrailAt = now
       }
     }

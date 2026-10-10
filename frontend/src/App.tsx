@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { AirportDiorama } from './AirportDiorama'
+import { AirTraffic3D } from './AirTraffic3D'
 import { AirTrafficCanvas } from './AirTrafficCanvas'
 import { Board } from './Board'
-import { DIORAMA } from './config'
+import { DIORAMA, MAP } from './config'
 import { GroundTracker } from './groundTracker'
 import { useSettingsVersion } from './settings'
 import { SettingsPanel } from './SettingsPanel'
@@ -19,7 +20,11 @@ export default function App() {
 
   return (
     <main className="app">
-      <AirTrafficCanvas tracker={tracker} overlay={boardRef} />
+      {MAP.view === '3d' ? (
+        <AirTraffic3D tracker={tracker} overlay={boardRef} />
+      ) : (
+        <AirTrafficCanvas tracker={tracker} overlay={boardRef} />
+      )}
       {DIORAMA.enabled && <AirportDiorama tracker={tracker} ground={ground} />}
       <Board board={board} status={status} ref={boardRef} />
       <SettingsPanel />

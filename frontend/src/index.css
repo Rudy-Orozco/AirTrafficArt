@@ -166,13 +166,39 @@ body,
   right: 54px;
 }
 
+.view-button {
+  right: 96px;
+  font: 600 11px var(--sans);
+  letter-spacing: 0.04em;
+}
+
+/* The 3D map takes drags (orbit/pan/zoom); its label layer lets them through. */
+.radar.map3d {
+  cursor: grab;
+  touch-action: none;
+}
+
+.radar.map3d:active {
+  cursor: grabbing;
+}
+
+.radar.map3d-labels {
+  pointer-events: none;
+}
+
+.terrain-button {
+  right: 138px;
+}
+
 .toolbar-button:hover,
 .settings-button.is-open,
-.lock-button.is-locked {
+.lock-button.is-locked,
+.terrain-button.is-on {
   color: var(--text);
 }
 
-.lock-button.is-locked {
+.lock-button.is-locked,
+.terrain-button.is-on {
   border-color: var(--text-dim);
 }
 
@@ -235,13 +261,50 @@ body,
   color: var(--text);
 }
 
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.settings-tab {
+  flex: none;
+  padding: 7px 10px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font: 500 12px var(--sans);
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.is-active {
+  border-bottom-color: #4ea2ff;
+  color: var(--text);
+}
+
 .settings-body {
   overflow-y: auto;
   padding: 4px 16px 12px;
 }
 
+/* Each group is a card, so sections read as separate blocks. */
+.settings-group {
+  margin-top: 12px;
+  padding: 2px 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(220 230 245 / 0.03);
+}
+
 .settings-group h3 {
-  margin: 16px 0 6px;
+  margin: 10px 0 4px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -275,12 +338,12 @@ body,
 }
 
 .settings-range input {
-  width: 110px;
+  width: 92px;
   accent-color: #4ea2ff;
 }
 
 .settings-range output {
-  min-width: 52px;
+  min-width: 46px;
   text-align: right;
   font: 400 12px var(--mono);
   color: var(--text-dim);

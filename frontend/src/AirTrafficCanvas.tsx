@@ -1,10 +1,10 @@
 import { useEffect, useRef, type RefObject } from 'react'
-import { fetchBasemap, type Basemap } from './basemap'
-import { AIRPORT, CENTER, MAP, VIEW_RADIUS_NM } from './config'
-import { loadRadar, type Radar } from './radar'
+import { CENTER, VIEW_RADIUS_NM } from './config'
+import { watchMapLayers, type MapLayers } from './mapLayers'
 import { createProjection, createView, drawTracks, labelFont, renderBackground } from './renderer'
 import { settingsVersion } from './settings'
 import type { Tracker } from './tracker'
+import { uncoveredArea } from './layout'
 
 /**
  * Full-screen map canvas driven by requestAnimationFrame. All per-frame work
@@ -23,14 +23,13 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
     let width = 0
     let height = 0
     let dpr = 1
-    let basemap: Basemap | null = null
-    let radar: Radar | null = null
+    let layers: MapLayers = { basemap: null, radar: null, terrain: null }
     let view = createView(1, 1, VIEW_RADIUS_NM)
     let project = createProjection(view, CENTER)
     let background = renderBackground(1, 1, 1, view, project, null)
 
     const redrawBackground = () => {
-      background = renderBackground(width, height, dpr, view, project, basemap, radar)
+      background = renderBackground(width, height, dpr, view, project, layers.basemap, layers.radar, layers.terrain)
     }
 
     const resize = () => {
@@ -50,29 +49,12 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
     if (overlay.current) observer.observe(overlay.current)
     resize()
 
-    // The map is optional: draw without it until it loads, or if it's missing.
-    const controller = new AbortController()
-    fetchBasemap(AIRPORT, controller.signal)
-      .then((map) => {
-        basemap = map
-        redrawBackground()
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) console.warn('Basemap unavailable:', err)
-      })
     // Radar is baked into the background too, so it costs nothing per frame;
     // the background is redrawn whenever a new scan arrives.
-    const refreshRadar = () =>
-      loadRadar(controller.signal)
-        .then((r) => {
-          radar = r
-          redrawBackground()
-        })
-        .catch((err) => {
-          if (!controller.signal.aborted) console.warn('Radar unavailable:', err)
-        })
-    const radarTimer = MAP.radar.enabled ? setInterval(refreshRadar, MAP.radar.refreshMs) : undefined
-    if (MAP.radar.enabled) refreshRadar()
+    const stopLayers = watchMapLayers((loaded) => {
+      layers = loaded
+      redrawBackground()
+    })
 
     // Labels baked into the background need redrawing once the web font arrives.
     document.fonts.load(labelFont()).then(redrawBackground, () => {})
@@ -91,24 +73,11 @@ export function AirTrafficCanvas({ tracker, overlay }: { tracker: Tracker; overl
     })
 
     return () => {
-      controller.abort()
-      clearInterval(radarTimer)
+      stopLayers()
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
   }, [tracker, overlay])
 
   return <canvas ref={canvasRef} className="radar" />
-}
-
-/**
- * The part of the screen not covered by the overlay, which sits along the bottom
- * (portrait) or the right (landscape). Its fade-in padding counts half as visible.
- */
-function uncoveredArea(width: number, height: number, overlay: HTMLElement | null) {
-  if (!overlay) return { width, height }
-  const rect = overlay.getBoundingClientRect()
-  const style = getComputedStyle(overlay)
-  if (rect.left > 0) return { width: rect.left + parseFloat(style.paddingLeft) / 2, height }
-  return { width, height: rect.top + parseFloat(style.paddingTop) / 2 }
 }

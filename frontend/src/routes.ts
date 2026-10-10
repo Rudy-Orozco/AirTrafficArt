@@ -4,6 +4,9 @@ import { FEED } from './config'
 export interface Airport {
   iata: string
   city: string
+  /** Where it is, when the route database gives it (for drawing route lines). */
+  lat: number | null
+  lon: number | null
 }
 
 /** Every stop on the flight's published route, in order. */
@@ -14,7 +17,14 @@ export interface Route {
 interface RawRoute {
   callsign: string
   plausible?: boolean | null
-  _airports?: { iata: string; location: string }[]
+  _airports?: RawAirport[]
+}
+
+interface RawAirport {
+  iata: string
+  location: string
+  lat?: number
+  lon?: number
 }
 
 /** Airline callsigns look like AAL1514. Private tail numbers (N123AB) have no published route. */
@@ -77,7 +87,14 @@ async function fetchRoutes(aircraft: Aircraft[], signal: AbortSignal): Promise<(
   return res.json()
 }
 
-function toRoute(airports: { iata: string; location: string }[]): Route {
-  // Some locations carry stray separators, e.g. "Fayetteville/Springdale/".
-  return { airports: airports.map((a) => ({ iata: a.iata, city: a.location.replace(/\/+$/, '') })) }
+function toRoute(airports: RawAirport[]): Route {
+  return {
+    airports: airports.map((a) => ({
+      iata: a.iata,
+      // Some locations carry stray separators, e.g. "Fayetteville/Springdale/".
+      city: a.location.replace(/\/+$/, ''),
+      lat: a.lat ?? null,
+      lon: a.lon ?? null,
+    })),
+  }
 }

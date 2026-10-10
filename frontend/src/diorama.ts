@@ -422,7 +422,7 @@ export function drawDioramaAircraft(
     if (t.opacity <= 0 || !inside(local)) continue
     // Above zero only while settling onto the runway just after touchdown.
     const at = { ...local, z: t.heightFt * M_PER_FT * view.altitudeScale }
-    const opacity = t.opacity * (t.parked ? DIORAMA.parkedOpacity : 1) * (t.info.kind === 'other' ? 0.75 : 1)
+    const opacity = t.opacity * (t.parked ? DIORAMA.parkedOpacity : 1) * (t.info.kind === 'other' ? MAP.otherOpacity : 1)
     const color = kindColor(t.info.kind)
     poses.push({ id: `g${t.info.hex}`, info: t.info, at, heading: t.heading, pitch: 0, bank: 0, color, opacity })
     if (drawPlanes) items.push({ depth: view.depth(at), draw: () => drawPlane(ctx, view, at, t.heading, t.info, color, opacity) })
@@ -437,7 +437,7 @@ export function drawDioramaAircraft(
     if (!inside(local)) continue
     const at = { ...local, z: Math.max(heightFt, 0) * M_PER_FT * view.altitudeScale }
     const color = kindColor(t.info.kind)
-    const opacity = t.opacity * (t.info.kind === 'other' ? MAP.otherOpacity * 2 : 1)
+    const opacity = t.opacity * (t.info.kind === 'other' ? MAP.otherOpacity : 1)
     poses.push({ id: `a${t.info.hex}`, info: t.info, at, heading: t.heading, pitch: pitchOf(t.info), bank: bankOf(t), color, opacity })
     items.push({
       depth: view.depth(at),
@@ -482,14 +482,14 @@ const G = 9.81
 const KT_TO_MS = 0.514444
 
 /** Climb or descent angle from vertical rate and ground speed, in degrees. */
-function pitchOf(f: Flight) {
+export function pitchOf(f: Flight) {
   if (!f.verticalRate || !f.groundSpeed) return 0
   const climb = (f.verticalRate * M_PER_FT) / 60
   return clampDeg((Math.atan2(climb, f.groundSpeed * KT_TO_MS) * 180) / Math.PI, 15)
 }
 
 /** Bank angle for a coordinated turn at the drawn path's turn rate and speed, in degrees. */
-function bankOf(t: Track) {
+export function bankOf(t: Track) {
   if (!t.info.groundSpeed) return 0
   const turnRadPerS = (t.turning * 1000 * Math.PI) / 180
   return clampDeg((Math.atan((t.info.groundSpeed * KT_TO_MS * turnRadPerS) / G) * 180) / Math.PI, 35)

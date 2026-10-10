@@ -1,0 +1,620 @@
+import {
+  AmbientLight,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
+  Color,
+  DirectionalLight,
+  DoubleSide,
+  Fog,
+  Line,
+  LineBasicMaterial,
+  LineDashedMaterial,
+  LineSegments,
+  Mesh,
+  MeshBasicMaterial,
+  MeshPhongMaterial,
+  PerspectiveCamera,
+  PlaneGeometry,
+  Points,
+  PointsMaterial,
+  SRGBColorSpace,
+  Scene,
+  Vector3,
+  WebGLRenderer,
+} from 'three'
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { modelGeometry } from './aircraftModels'
+import { aircraftSize } from './aircraftShapes'
+import { AIRPORT_PRESET, CENTER, FETCH_RADIUS_NM, MAP, MAP3D } from './config'
+import { bankOf, pitchOf } from './diorama'
+import type { FlightKind } from './flights'
+import type { MapLayers } from './mapLayers'
+import { elevationAt, type Terrain } from './terrain'
+import { createProjection, drawTrackLabels, labelFont, renderBackground, type Point } from './renderer'
+import type { LatLon, Track } from './tracker'
+
+const FT_PER_NM = 6076.12
+const LON_SCALE = Math.cos((CENTER.lat * Math.PI) / 180)
+const BACKGROUND = 0x03050a
+const CAMERA_KEY = 'map3dCamera'
+
+/** Nautical miles east (x) and north (y) of the airport. */
+function local(p: LatLon) {
+  return { x: (p.lon - CENTER.lon) * 60 * LON_SCALE, y: (p.lat - CENTER.lat) * 60 }
+}
+
+/** Drawn height in nautical miles: above the field, exaggerated per MAP3D.altitudeScale. */
+function heightOf(altitudeFt: number | null) {
+  if (altitudeFt === null) return 0
+  return (Math.max(altitudeFt - AIRPORT_PRESET.elevationFt, 0) / FT_PER_NM) * MAP3D.altitudeScale
+}
+
+function kindColor(kind: FlightKind) {
+  if (kind === 'arrival') return MAP.arrivalColor
+  if (kind === 'departure') return MAP.departureColor
+  return MAP.otherColor
+}
+
+function kindOpacity(kind: FlightKind) {
+  return kind === 'other' ? MAP.otherOpacity : 1
+}
+
+/** One aircraft's scene objects. */
+interface Craft {
+  mesh: Mesh
+  material: MeshPhongMaterial
+  trail: Line
+  curtain: Mesh
+  route: Line
+  /** Points in the trail buffers, how many they can hold, and the trail sample they were built from. */
+  count: number
+  capacity: number
+  builtAt: number
+  routeEnd: Vector3 | null
+}
+
+/**
+ * The tilted 3D map: the 2D map's background as the ground, aircraft as 3D
+ * models at (exaggerated) altitude, trails as 3D lines with a faint curtain to
+ * the ground, and optional lines toward each flight's origin or destination.
+ * Labels go on a 2D canvas laid over it.
+ */
+export class Map3D {
+  private readonly renderer: WebGLRenderer
+  private readonly scene = new Scene()
+  private readonly camera = new PerspectiveCamera(40, 1, 0.05, 2000)
+  private readonly controls: OrbitControls
+  private readonly ground: Mesh<PlaneGeometry, MeshBasicMaterial>
+  /** Set while terrain is on and loaded: the ground is raised to match it. */
+  private terrain: Terrain | null = null
+  private readonly drops = new LineSegments(
+    new BufferGeometry(),
+    new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
+  )
+  /** A dot on the ground under each aircraft, a few pixels across at any distance. */
+  private readonly dots = new Points(
+    new BufferGeometry(),
+    new PointsMaterial({
+      size: DOT_PX,
+      sizeAttenuation: false,
+      map: roundDot(),
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+    }),
+  )
+  private readonly crafts = new Map<Track, Craft>()
+  private readonly labels: CanvasRenderingContext2D
+  private width = 1
+  private height = 1
+  private shift = { x: 0, y: 0 }
+
+  constructor(canvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement) {
+    this.renderer = new WebGLRenderer({ canvas, antialias: true })
+    this.renderer.setClearColor(BACKGROUND)
+    this.labels = labelCanvas.getContext('2d')!
+
+    const R = FETCH_RADIUS_NM
+    // Range is set each frame from the camera's distance (see render).
+    this.scene.fog = new Fog(BACKGROUND, R, R * 3)
+    this.scene.add(new AmbientLight(0xffffff, 1.1))
+    const sun = new DirectionalLight(0xffffff, 2.2)
+    sun.position.set(-0.4, -0.6, 1)
+    this.scene.add(sun)
+
+    // Faded out toward its edges, so the map has no hard square border.
+    this.ground = new Mesh(
+      new PlaneGeometry(R * 2, R * 2),
+      new MeshBasicMaterial({ color: BACKGROUND, alphaMap: edgeFade(), transparent: true }),
+    )
+    // Draw the ground before everything else that's see-through (trails, curtains, aircraft).
+    this.ground.renderOrder = -1
+    this.scene.add(this.ground)
+    this.drops.frustumCulled = false
+    this.scene.add(this.drops)
+    this.dots.frustumCulled = false
+    this.scene.add(this.dots)
+
+    // North-up map with z as height.
+    this.camera.up.set(0, 0, 1)
+    this.controls = new OrbitControls(this.camera, canvas)
+    this.controls.enableDamping = true
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.04
+    this.controls.minDistance = 2
+    this.controls.maxDistance = R * 4
+    this.controls.addEventListener('end', () => this.saveCamera())
+    this.restoreCamera()
+  }
+
+  /**
+   * Bakes the 2D map's background (basemap, radar, hill shading, range rings)
+   * into the ground texture, and raises the ground to the terrain when it's on.
+   */
+  setBackground({ basemap, radar, terrain }: MapLayers) {
+    const size = Math.min(4096, this.renderer.capabilities.maxTextureSize)
+    const R = FETCH_RADIUS_NM
+    // Drawn at half size and 2× pixel ratio, so lines and lettering come out twice as
+    // big as on the flat map and stay readable when seen at an angle from afar.
+    const half = size / 2
+    const view = { cx: half / 2, cy: half / 2, pxPerNm: half / (2 * R) }
+    const canvas = renderBackground(half, half, 2, view, createProjection(view, CENTER), basemap, radar, terrain)
+    const texture = new CanvasTexture(canvas)
+    texture.colorSpace = SRGBColorSpace
+    texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy()
+    this.ground.material.map?.dispose()
+    this.ground.material.map = texture
+    this.ground.material.color.set(0xffffff)
+    this.ground.material.needsUpdate = true
+
+    this.terrain = MAP.terrain ? terrain : null
+    this.buildGround()
+  }
+
+  /** Flat, or a grid of heights following the terrain (with the aircraft's height exaggeration). */
+  private buildGround() {
+    const R = FETCH_RADIUS_NM
+    const segments = this.terrain ? GROUND_SEGMENTS : 1
+    const geometry = new PlaneGeometry(R * 2, R * 2, segments, segments)
+    if (this.terrain) {
+      const pos = geometry.getAttribute('position') as BufferAttribute
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, this.groundZ(pos.getX(i), pos.getY(i)))
+      geometry.computeVertexNormals()
+    }
+    this.ground.geometry.dispose()
+    this.ground.geometry = geometry
+    // Trails hang their curtains down to the ground, so rebuild them too.
+    for (const craft of this.crafts.values()) craft.builtAt = -1
+  }
+
+  /** Height of the ground at a point (nautical miles east/north), drawn like aircraft heights; 0 without terrain. */
+  private groundZ(x: number, y: number) {
+    if (!this.terrain) return 0
+    const meters = elevationAt(this.terrain, CENTER.lat + y / 60, CENTER.lon + x / (60 * LON_SCALE))
+    return ((meters * FT_PER_M - AIRPORT_PRESET.elevationFt) / FT_PER_NM) * MAP3D.altitudeScale
+  }
+
+  /**
+   * `visible` is the part of the screen the board leaves uncovered; the view
+   * centers itself there, like the flat map.
+   */
+  resize(width: number, height: number, dpr: number, visible: { width: number; height: number }) {
+    this.width = Math.max(width, 1)
+    this.height = Math.max(height, 1)
+    this.renderer.setPixelRatio(dpr)
+    this.renderer.setSize(this.width, this.height, false)
+    const canvas = this.labels.canvas
+    canvas.width = this.width * dpr
+    canvas.height = this.height * dpr
+    this.labels.setTransform(dpr, 0, 0, dpr, 0, 0)
+    this.camera.aspect = this.width / this.height
+    // Move the vanishing point to the middle of the uncovered area.
+    this.shift = { x: visible.width / this.width - 1, y: 1 - visible.height / this.height }
+    this.updateProjection()
+  }
+
+  resetCamera() {
+    this.controls.target.set(0, 0, 0)
+    this.camera.position.copy(DEFAULT_CAMERA)
+    this.controls.update()
+    this.saveCamera()
+  }
+
+  /** Draws one frame. Call after the tracker has stepped. */
+  render(tracks: Iterable<Track>) {
+    this.controls.update()
+    // Fog only the far side of the map, however far out the camera is zoomed;
+    // fixed distances would darken the whole map when zoomed out.
+    const fog = this.scene.fog as Fog
+    const distance = this.camera.position.distanceTo(this.controls.target)
+    fog.near = distance + FETCH_RADIUS_NM * 0.6
+    fog.far = distance + FETCH_RADIUS_NM * 2.2
+    const seen = new Set<Track>()
+    const shown: Track[] = []
+    const screen: Point[] = []
+    const routeLabels: { at: Vector3; text: string; color: string; opacity: number }[] = []
+    const drops: number[] = []
+    const dropColors: number[] = []
+    const dots: number[] = []
+    const dotColors: number[] = []
+    const color = new Color()
+
+    for (const t of tracks) {
+      if (t.opacity <= 0) continue
+      seen.add(t)
+      const craft = this.crafts.get(t) ?? this.addCraft(t)
+      const { x, y } = local(t.pos)
+      const z = heightOf(t.altitude)
+      const opacity = t.opacity * kindOpacity(t.info.kind)
+      color.set(kindColor(t.info.kind))
+
+      const size = aircraftSize(t.info.aircraftType, t.info.emitterCategory)
+      const geometry = modelGeometry(size.kind, size.lengthM, size.spanM, t.info.aircraftType)
+      if (craft.mesh.geometry !== geometry) craft.mesh.geometry = geometry
+      craft.mesh.position.set(x, y, z)
+      craft.mesh.scale.setScalar(this.modelLength(craft.mesh.position, size.lengthM) / size.lengthM)
+      craft.mesh.rotation.set(rad(pitchOf(t.info)), rad(bankOf(t)), -rad(t.heading), 'ZXY')
+      craft.material.color.copy(color)
+      craft.material.opacity = opacity
+
+      this.updateTrail(craft, t, color, opacity)
+      this.updateRoute(craft, t, x, y, z, color, opacity)
+      if (craft.routeEnd && t.info.counterpart) {
+        routeLabels.push({ at: craft.routeEnd, text: t.info.counterpart.city, color: kindColor(t.info.kind), opacity })
+      }
+
+      // Drop line from the aircraft to the ground.
+      const groundZ = this.groundZ(x, y)
+      drops.push(x, y, z, x, y, groundZ)
+      dropColors.push(color.r, color.g, color.b, 0.35 * opacity, color.r, color.g, color.b, 0)
+      // Lifted a hair so it isn't hidden in the ground.
+      dots.push(x, y, groundZ + 0.05)
+      dotColors.push(color.r, color.g, color.b, 0.8 * opacity)
+
+      const p = craft.mesh.position.clone().project(this.camera)
+      if (p.z < 1 && Math.abs(p.x) < 1.2 && Math.abs(p.y) < 1.2) {
+        shown.push(t)
+        screen.push({ x: ((p.x + 1) / 2) * this.width, y: ((1 - p.y) / 2) * this.height })
+      }
+    }
+    for (const [t, craft] of this.crafts) if (!seen.has(t)) this.removeCraft(t, craft)
+
+    this.drops.geometry.setAttribute('position', new BufferAttribute(new Float32Array(drops), 3))
+    this.drops.geometry.setAttribute('color', new BufferAttribute(new Float32Array(dropColors), 4))
+    this.dots.geometry.setAttribute('position', new BufferAttribute(new Float32Array(dots), 3))
+    this.dots.geometry.setAttribute('color', new BufferAttribute(new Float32Array(dotColors), 4))
+    this.renderer.render(this.scene, this.camera)
+
+    const ctx = this.labels
+    ctx.clearRect(0, 0, this.width, this.height)
+    if (MAP.showLabels) drawTrackLabels(ctx, shown, screen)
+    this.drawRouteLabels(routeLabels)
+  }
+
+  dispose() {
+    for (const [t, craft] of this.crafts) this.removeCraft(t, craft)
+    this.controls.dispose()
+    this.ground.material.map?.dispose()
+    this.ground.material.alphaMap?.dispose()
+    this.renderer.dispose()
+  }
+
+  // ---- Aircraft ---------------------------------------------------------------------
+
+  private addCraft(t: Track): Craft {
+    const material = new MeshPhongMaterial({ flatShading: true, shininess: 40, transparent: true, side: DoubleSide })
+    const mesh = new Mesh(new BufferGeometry(), material)
+    mesh.frustumCulled = false
+    const trail = new Line(new BufferGeometry(), new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }))
+    const curtain = new Mesh(
+      new BufferGeometry(),
+      new MeshBasicMaterial({ vertexColors: true, transparent: true, side: DoubleSide, depthWrite: false }),
+    )
+    const route = new Line(
+      new BufferGeometry(),
+      new LineDashedMaterial({ vertexColors: true, transparent: true, depthWrite: false, dashSize: 1.2, gapSize: 0.8 }),
+    )
+    for (const o of [trail, curtain, route]) o.frustumCulled = false
+    this.scene.add(mesh, trail, curtain, route)
+    const craft: Craft = { mesh, material, trail, curtain, route, count: 0, capacity: 0, builtAt: -1, routeEnd: null }
+    this.crafts.set(t, craft)
+    return craft
+  }
+
+  private removeCraft(t: Track, craft: Craft) {
+    this.scene.remove(craft.mesh, craft.trail, craft.curtain, craft.route)
+    craft.material.dispose()
+    for (const o of [craft.trail, craft.curtain, craft.route]) {
+      o.geometry.dispose()
+      ;(o.material as LineBasicMaterial).dispose()
+    }
+    this.crafts.delete(t)
+  }
+
+  /**
+   * Rebuilds the trail line and curtain when a new trail point arrives (twice a
+   * second), and otherwise just moves their head to the aircraft each frame.
+   */
+  private updateTrail(craft: Craft, t: Track, color: Color, opacity: number) {
+    const n = t.trail.length + 1
+    if (t.lastTrailAt !== craft.builtAt || n !== craft.count) {
+      craft.builtAt = t.lastTrailAt
+      if (n > craft.capacity) this.allocateTrail(craft, n + 64)
+      craft.count = n
+      const points = smooth(
+        [...t.trail.map((p, i) => ({ ...local(p), z: heightOf(t.trailAlt[i] ?? null) })), { ...local(t.pos), z: heightOf(t.altitude) }],
+        MAP.trailSmoothing,
+      )
+      const line = craft.trail.geometry
+      const wall = craft.curtain.geometry
+      const linePos = line.getAttribute('position') as BufferAttribute
+      const lineCol = line.getAttribute('color') as BufferAttribute
+      const wallPos = wall.getAttribute('position') as BufferAttribute
+      const wallCol = wall.getAttribute('color') as BufferAttribute
+      const curtain = MAP3D.showCurtains ? MAP3D.curtainOpacity : 0
+      points.forEach((p, i) => {
+        // Fades in from the tail to the aircraft.
+        const fade = n > 1 ? i / (n - 1) : 1
+        linePos.setXYZ(i, p.x, p.y, p.z)
+        lineCol.setXYZW(i, color.r, color.g, color.b, fade * MAP.trailOpacity * opacity)
+        wallPos.setXYZ(2 * i, p.x, p.y, p.z)
+        wallPos.setXYZ(2 * i + 1, p.x, p.y, this.groundZ(p.x, p.y))
+        wallCol.setXYZW(2 * i, color.r, color.g, color.b, fade * curtain * opacity)
+        wallCol.setXYZW(2 * i + 1, color.r, color.g, color.b, 0)
+      })
+      for (const a of [linePos, lineCol, wallPos, wallCol]) {
+        a.clearUpdateRanges()
+        a.needsUpdate = true
+      }
+      line.setDrawRange(0, n)
+      wall.setDrawRange(0, Math.max(n - 1, 0) * 6)
+      return
+    }
+    // Same trail: just keep its head on the aircraft.
+    const i = n - 1
+    const { x, y } = local(t.pos)
+    const z = heightOf(t.altitude)
+    const linePos = craft.trail.geometry.getAttribute('position') as BufferAttribute
+    const wallPos = craft.curtain.geometry.getAttribute('position') as BufferAttribute
+    linePos.setXYZ(i, x, y, z)
+    wallPos.setXYZ(2 * i, x, y, z)
+    wallPos.setXYZ(2 * i + 1, x, y, this.groundZ(x, y))
+    linePos.clearUpdateRanges()
+    linePos.addUpdateRange(i * 3, 3)
+    linePos.needsUpdate = true
+    wallPos.clearUpdateRanges()
+    wallPos.addUpdateRange(i * 6, 6)
+    wallPos.needsUpdate = true
+  }
+
+  private allocateTrail(craft: Craft, capacity: number) {
+    craft.capacity = capacity
+    const line = new BufferGeometry()
+    line.setAttribute('position', new BufferAttribute(new Float32Array(capacity * 3), 3))
+    line.setAttribute('color', new BufferAttribute(new Float32Array(capacity * 4), 4))
+    const wall = new BufferGeometry()
+    wall.setAttribute('position', new BufferAttribute(new Float32Array(capacity * 6), 3))
+    wall.setAttribute('color', new BufferAttribute(new Float32Array(capacity * 8), 4))
+    // Two triangles between each pair of trail points: top and bottom of the curtain.
+    const index = new Uint32Array((capacity - 1) * 6)
+    for (let i = 0; i < capacity - 1; i++) {
+      const [a, b, c, d] = [2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3]
+      index.set([a, b, c, b, d, c], i * 6)
+    }
+    wall.setIndex(new BufferAttribute(index, 1))
+    craft.trail.geometry.dispose()
+    craft.curtain.geometry.dispose()
+    craft.trail.geometry = line
+    craft.curtain.geometry = wall
+  }
+
+  /**
+   * A dashed line from the aircraft along the great circle toward its origin
+   * (arrivals) or destination (departures), rising toward cruise height as it
+   * goes. Rebuilt with the trail; hidden when off or the airport isn't known.
+   */
+  private updateRoute(craft: Craft, t: Track, x: number, y: number, z: number, color: Color, opacity: number) {
+    const target = t.info.counterpart
+    const on = MAP3D.showRoutes && t.info.kind !== 'other' && target?.lat != null && target.lon != null
+    craft.route.visible = on
+    if (!on) {
+      craft.routeEnd = null
+      return
+    }
+    if (craft.route.userData.builtAt === craft.builtAt) {
+      // Keep the start on the aircraft between rebuilds.
+      const pos = craft.route.geometry.getAttribute('position') as BufferAttribute
+      pos.setXYZ(0, x, y, z)
+      pos.needsUpdate = true
+      return
+    }
+    craft.route.userData.builtAt = craft.builtAt
+    const points = greatCircle(t.pos, { lat: target!.lat!, lon: target!.lon! }, MAP3D.routeLengthNm, ROUTE_SEGMENTS)
+    const cruise = heightOf(AIRPORT_PRESET.elevationFt + CRUISE_FT)
+    const positions = new Float32Array(points.length * 3)
+    const colors = new Float32Array(points.length * 4)
+    points.forEach((p, i) => {
+      const f = i / (points.length - 1)
+      const l = local(p)
+      positions.set([l.x, l.y, z + (Math.max(cruise, z) - z) * f * f], i * 3)
+      colors.set([color.r, color.g, color.b, 0.7 * opacity * (1 - f * 0.85)], i * 4)
+    })
+    craft.route.geometry.dispose()
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new BufferAttribute(colors, 4))
+    craft.route.geometry = geometry
+    craft.route.computeLineDistances()
+    const last = points.length - 1
+    craft.routeEnd = new Vector3(positions[last * 3], positions[last * 3 + 1], positions[last * 3 + 2])
+  }
+
+  private drawRouteLabels(items: { at: Vector3; text: string; color: string; opacity: number }[]) {
+    const ctx = this.labels
+    ctx.font = `${MAP.labelSize - 1}px ${MAP.fontFamily}`
+    ctx.letterSpacing = '2px'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    for (const { at, text, color, opacity } of items) {
+      const p = at.clone().project(this.camera)
+      if (p.z >= 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1) continue
+      ctx.globalAlpha = 0.6 * opacity
+      ctx.fillStyle = color
+      ctx.fillText(text.toUpperCase(), ((p.x + 1) / 2) * this.width, ((1 - p.y) / 2) * this.height - 4)
+    }
+    ctx.globalAlpha = 1
+    ctx.letterSpacing = '0px'
+    ctx.font = labelFont()
+  }
+
+  // ---- Camera -----------------------------------------------------------------------
+
+  /** World units per screen pixel at `distance` from the camera, for sizing things in pixels. */
+  private worldPerPixel(distance: number) {
+    return (2 * distance * Math.tan(rad(this.camera.fov) / 2)) / this.height
+  }
+
+  /**
+   * How long (in nautical miles) to draw an aircraft whose real length is
+   * `lengthM`. Normally a fixed size in the world, so it grows as you zoom in,
+   * sized to look like MAP3D.planeSize from the default camera distance; never
+   * smaller than a few pixels when zoomed far out. With MAP3D.fixedScreenSize,
+   * the same number of pixels at any distance instead.
+   */
+  private modelLength(at: Vector3, lengthM: number) {
+    const px = MAP3D.planeSize * 2.6 * Math.sqrt(lengthM / 38)
+    const here = this.worldPerPixel(this.camera.position.distanceTo(at))
+    if (MAP3D.fixedScreenSize) return px * here
+    return Math.max(px * this.worldPerPixel(DEFAULT_DISTANCE), MIN_MODEL_PX * here)
+  }
+
+  private updateProjection() {
+    this.camera.updateProjectionMatrix()
+    // Shear the projection so its center sits in the uncovered area (see resize).
+    this.camera.projectionMatrix.elements[8] -= this.shift.x
+    this.camera.projectionMatrix.elements[9] -= this.shift.y
+    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert()
+  }
+
+  private saveCamera() {
+    try {
+      const { position: p } = this.camera
+      const { target: t } = this.controls
+      localStorage.setItem(CAMERA_KEY, JSON.stringify({ position: [p.x, p.y, p.z], target: [t.x, t.y, t.z] }))
+    } catch {
+      // Storage unavailable: the view just won't be remembered.
+    }
+  }
+
+  private restoreCamera() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CAMERA_KEY) ?? 'null') as { position: number[]; target: number[] } | null
+      if (saved?.position?.length === 3 && saved.target?.length === 3) {
+        this.camera.position.set(saved.position[0], saved.position[1], saved.position[2])
+        this.controls.target.set(saved.target[0], saved.target[1], saved.target[2])
+        this.controls.update()
+        return
+      }
+    } catch {
+      // Fall through to the default view.
+    }
+    this.resetCamera()
+  }
+}
+
+/**
+ * An alpha map that's solid in the middle and fades to clear at the ground's
+ * edges (and fully clear in its corners), drawn as a radial gradient.
+ */
+function edgeFade() {
+  const size = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * EDGE_FADE_START, size / 2, size / 2, size / 2)
+  gradient.addColorStop(0, '#fff')
+  gradient.addColorStop(1, '#000')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+  return new CanvasTexture(canvas)
+}
+
+/** Ground dots' size in pixels, and a soft round sprite for them (points are square otherwise). */
+const DOT_PX = 5
+
+function roundDot() {
+  const size = 32
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
+  gradient.addColorStop(0, '#fff')
+  gradient.addColorStop(0.6, '#fff')
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, size, size)
+  return new CanvasTexture(canvas)
+}
+
+/** Where the fade begins, as a fraction of the ground's width from its middle. */
+const EDGE_FADE_START = 0.3
+
+/** Where the camera starts, and its distance from the map's middle, which sets the aircraft's world size. */
+const DEFAULT_CAMERA = new Vector3(0, -FETCH_RADIUS_NM * 1.25, FETCH_RADIUS_NM * 0.85)
+const DEFAULT_DISTANCE = DEFAULT_CAMERA.length()
+/** Aircraft never get smaller than this on screen, however far out you zoom. */
+const MIN_MODEL_PX = 6
+
+const ROUTE_SEGMENTS = 40
+/** Ground grid resolution with terrain on: ~0.5 nm per cell over the area. */
+const GROUND_SEGMENTS = 255
+const FT_PER_M = 3.28084
+/** Route lines rise toward this altitude (feet) away from the airport. */
+const CRUISE_FT = 30_000
+
+function rad(deg: number) {
+  return (deg * Math.PI) / 180
+}
+
+/**
+ * Points along the great circle from `from` toward `to`, stopping after
+ * `maxNm` nautical miles (or at `to`, if closer).
+ */
+function greatCircle(from: LatLon, to: LatLon, maxNm: number, segments: number): LatLon[] {
+  const toVec = ({ lat, lon }: LatLon) => {
+    const [φ, λ] = [rad(lat), rad(lon)]
+    return [Math.cos(φ) * Math.cos(λ), Math.cos(φ) * Math.sin(λ), Math.sin(φ)]
+  }
+  const a = toVec(from)
+  const b = toVec(to)
+  const angle = Math.acos(Math.min(1, Math.max(-1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])))
+  if (angle < 1e-9) return [from, to]
+  // Central angle covered: maxNm of arc, or the whole way.
+  const reach = Math.min(angle, rad(maxNm / 60))
+  const points: LatLon[] = []
+  for (let i = 0; i <= segments; i++) {
+    const f = (reach * i) / segments
+    const [wa, wb] = [Math.sin(angle - f) / Math.sin(angle), Math.sin(f) / Math.sin(angle)]
+    const [x, y, z] = [wa * a[0] + wb * b[0], wa * a[1] + wb * b[1], wa * a[2] + wb * b[2]]
+    points.push({ lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI })
+  }
+  return points
+}
+
+/** Moving average over up to `radius` neighbours, narrowing at the ends so they stay put. */
+function smooth<T extends { x: number; y: number; z: number }>(points: T[], radius: number): T[] {
+  if (radius <= 0 || points.length < 3) return points
+  const last = points.length - 1
+  return points.map((p, i) => {
+    const r = Math.min(radius, i, last - i)
+    if (r === 0) return p
+    let [x, y, z] = [0, 0, 0]
+    for (let j = i - r; j <= i + r; j++) {
+      x += points[j].x
+      y += points[j].y
+      z += points[j].z
+    }
+    const n = 2 * r + 1
+    return { ...p, x: x / n, y: y / n, z: z / n }
+  })
+}

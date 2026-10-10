@@ -206,7 +206,7 @@ const PROPORTIONS: Record<Exclude<ShapeKind, 'helicopter'>, Proportions> = {
  * The model for one type, in meters: nose toward +y, up +z, centered on the
  * fuselage axis and lifted so the wheels would rest on the ground.
  */
-function modelGeometry(kind: ShapeKind, length: number, span: number, type: string | null): BufferGeometry {
+export function modelGeometry(kind: ShapeKind, length: number, span: number, type: string | null): BufferGeometry {
   const fourEngines = type !== null && FOUR_ENGINES.has(type.toUpperCase())
   const key = `${kind}|${length}|${span}|${fourEngines}`
   let geometry = geometries.get(key)

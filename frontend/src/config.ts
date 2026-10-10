@@ -91,6 +91,8 @@ export const MOTION = {
 }
 
 export const MAP = {
+  /** Flat map ('2d') or a tilted 3D map with aircraft at altitude ('3d'); the 2D/3D button switches. */
+  view: '2d' as '2d' | '3d',
   departureColor: '#ff8a33',
   arrivalColor: '#4ea2ff',
   /** Aircraft that are neither arriving at nor departing from AIRPORT. */
@@ -100,7 +102,7 @@ export const MAP = {
   /** Size of the aircraft arrows, in pixels. */
   planeSize: 9,
   /** Debug: mark where each arrival/departure is predicted to be when the next fetch lands. */
-  showPredictions: true,
+  showPredictions: false,
   /** Show callsign + altitude (hundreds of feet) next to each aircraft. */
   showLabels: true,
   labelSize: 12,
@@ -122,10 +124,19 @@ export const MAP = {
   /** Opacity of the trail at the aircraft end; it fades to nothing at the tail. */
   trailOpacity: 0.55,
 
+  /** Show the lie of the land: hill shading on the 2D map, real relief on the 3D map. */
+  terrain: false,
+  /** Strength of the hill shading. */
+  terrainShading: 0.8,
+
   /** Distance between the range rings, in nautical miles. */
   ringSpacingNm: 10,
 
-  /** Weather radar under the aircraft: NOAA MRMS, all NEXRAD radars merged and quality-controlled (continental US only). */
+  /**
+   * Weather radar under the aircraft: NOAA MRMS, all NEXRAD radars merged and
+   * quality-controlled. Covers the continental US (and nearby, e.g. Toronto);
+   * elsewhere, such as Frankfurt, there's no radar.
+   */
   radar: {
     enabled: true,
     /** New MRMS scans arrive about every 2 minutes. */
@@ -134,6 +145,24 @@ export const MAP = {
     /** Hide the weakest returns (mostly clutter, birds and drizzle) and show only rain and storms. */
     hideLightEchoes: true,
   },
+}
+
+// ---- 3D map ---------------------------------------------------------------------------
+
+export const MAP3D = {
+  /** Aircraft size in pixels from the starting camera distance (separate from the 2D map's MAP.planeSize). */
+  planeSize: 9,
+  /** Heights are drawn this many times taller than real, so climbs and descents read at this scale. */
+  altitudeScale: 4,
+  /** Hang a faint curtain from each trail down to the ground, showing its altitude profile. */
+  showCurtains: true,
+  curtainOpacity: 0.12,
+  /** Draw a line from each arrival toward its origin (and each departure toward its destination). */
+  showRoutes: false,
+  /** How far route lines reach, in nautical miles (origins can be across the world). */
+  routeLengthNm: 120,
+  /** Keep aircraft the same size on screen at any zoom, instead of a fixed size in the world that grows as you zoom in. */
+  fixedScreenSize: false,
 }
 
 // ---- 3D airport view ----------------------------------------------------------------
@@ -240,7 +269,7 @@ export const BOARD = {
 // ---- Saved settings -----------------------------------------------------------------
 
 /** The setting groups above, by name, so settings can be addressed by path. */
-export const CONFIG = { FEED, MOTION, MAP, DIORAMA, METAR, ATIS, BOARD }
+export const CONFIG = { FEED, MOTION, MAP, MAP3D, DIORAMA, METAR, ATIS, BOARD }
 
 /** The values above before any saved settings, for resetting. */
 export const CONFIG_DEFAULTS: typeof CONFIG = structuredClone(CONFIG)

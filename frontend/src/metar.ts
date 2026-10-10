@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FEED, METAR } from './config'
+import { AIRPORT_PRESET, FEED, METAR } from './config'
 
 export type FlightCategory = 'VFR' | 'MVFR' | 'IFR' | 'LIFR'
 
@@ -99,6 +99,10 @@ export function formatDewpoint({ dewp }: Metar) {
   return dewp === null ? '—' : `${Math.round(dewp)}°C`
 }
 
+/** North America (ICAO K..., C..., P... for Alaska/Hawaii) reports inches of mercury; most of the world hPa. */
+const USES_INHG = /^[KCP]/.test(AIRPORT_PRESET.icao)
+
 export function formatAltimeter({ altim }: Metar) {
-  return altim === null ? '—' : `${(altim * HPA_TO_INHG).toFixed(2)} INHG`
+  if (altim === null) return '—'
+  return USES_INHG ? `${(altim * HPA_TO_INHG).toFixed(2)} INHG` : `${Math.round(altim)} HPA`
 }

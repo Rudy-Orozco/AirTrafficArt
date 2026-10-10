@@ -2,6 +2,7 @@ import type { Basemap, Line } from './basemap'
 import { MAP } from './config'
 import type { FlightKind } from './flights'
 import type { Radar } from './radar'
+import type { Terrain } from './terrain'
 import { leaderLine, newLabelState, updateLabels, type LabelItem, type LabelState } from './labels'
 import type { LatLon, Track } from './tracker'
 
@@ -61,6 +62,7 @@ export function renderBackground(
   project: Projection,
   basemap: Basemap | null,
   radar: Radar | null = null,
+  terrain: Terrain | null = null,
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = width * dpr
@@ -77,6 +79,7 @@ export function renderBackground(
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, width, height)
 
+  if (terrain && MAP.terrain) drawTerrain(ctx, terrain, project)
   if (basemap) drawBasemap(ctx, basemap, project)
   if (radar) drawRadar(ctx, radar, project)
 
@@ -95,6 +98,23 @@ export function renderBackground(
   }
 
   return canvas
+}
+
+/** Hill shading stretched over the area it covers, under everything else. */
+function drawTerrain(ctx: CanvasRenderingContext2D, terrain: Terrain, project: Projection) {
+  const { west, south, east, north } = terrain.bounds
+  const topLeft = project({ lat: north, lon: west })
+  const bottomRight = project({ lat: south, lon: east })
+  ctx.save()
+  ctx.globalAlpha = Math.min(MAP.terrainShading, 1)
+  ctx.imageSmoothingQuality = 'high'
+  // Stronger than 1: draw it again on top.
+  const passes = MAP.terrainShading > 1 ? 2 : 1
+  for (let i = 0; i < passes; i++) {
+    if (i === 1) ctx.globalAlpha = MAP.terrainShading - 1
+    ctx.drawImage(terrain.shade, topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y)
+  }
+  ctx.restore()
 }
 
 /** Faint water and freeways for orientation, with runways as the brightest detail. */
@@ -231,6 +251,15 @@ document.fonts.addEventListener('loadingdone', () => textWidths.clear())
  * Labels go on top of every aircraft, each in a free spot around its aircraft,
  * with a leader line when it had to sit farther out.
  */
+/** Labels for aircraft already placed on screen by another view (the 3D map). */
+export function drawTrackLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: Point[]) {
+  ctx.font = labelFont()
+  ctx.textAlign = 'left'
+  ctx.lineCap = 'round'
+  drawLabels(ctx, tracks, positions)
+  ctx.globalAlpha = 1
+}
+
 function drawLabels(ctx: CanvasRenderingContext2D, tracks: Track[], positions: Point[]) {
   const texts = tracks.map(label)
   const items: LabelItem[] = tracks.map((t, i) => {

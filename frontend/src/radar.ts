@@ -24,6 +24,13 @@ const IMAGE_SIZE = 1024
  * image just stretches onto the map. The server allows browser requests.
  */
 const LAYER = 'conus_bref_qcd'
+
+/** The MRMS CONUS grid. Outside it (e.g. Europe) there's no radar to fetch. */
+const COVERAGE = { west: -130, east: -60, south: 20, north: 55 }
+
+/** Whether the radar covers the airport being shown. */
+export const RADAR_AVAILABLE =
+  CENTER.lon > COVERAGE.west && CENTER.lon < COVERAGE.east && CENTER.lat > COVERAGE.south && CENTER.lat < COVERAGE.north
 const WMS_URL = `https://opengeo.ncep.noaa.gov/geoserver/conus/${LAYER}/ows`
 
 export async function loadRadar(signal: AbortSignal): Promise<Radar> {

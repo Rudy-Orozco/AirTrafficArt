@@ -1,13 +1,14 @@
 import { useEffect, useId, useState } from 'react'
-import { DIORAMA } from './config'
+import { DIORAMA, MAP } from './config'
 import {
   getSetting,
   LOCK_SETTING,
   needsReload,
-  resetDioramaPlacement,
   resetSettings,
   setSetting,
-  SETTING_GROUPS,
+  SETTING_TABS,
+  TERRAIN_SETTING,
+  VIEW_SETTING,
   useSettingsVersion,
   type Setting,
 } from './settings'
@@ -19,7 +20,18 @@ import {
  */
 export function SettingsPanel() {
   const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState(loadTab)
   useSettingsVersion()
+  const activeTab = SETTING_TABS[tab] ?? SETTING_TABS[0]
+
+  const chooseTab = (index: number) => {
+    setTab(index)
+    try {
+      localStorage.setItem(TAB_KEY, String(index))
+    } catch {
+      // Not remembered; harmless.
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -31,8 +43,29 @@ export function SettingsPanel() {
   }, [open])
 
   const locked = DIORAMA.locked
+  const is3d = MAP.view === '3d'
+  const terrain = MAP.terrain
   return (
     <>
+      <button
+        type="button"
+        className={`toolbar-button terrain-button${terrain ? ' is-on' : ''}`}
+        aria-label={terrain ? 'Hide terrain' : 'Show terrain'}
+        aria-pressed={terrain}
+        title={terrain ? 'Hide terrain' : 'Show terrain'}
+        onClick={() => setSetting(TERRAIN_SETTING, !terrain)}
+      >
+        <MountainIcon />
+      </button>
+      <button
+        type="button"
+        className={`toolbar-button view-button${is3d ? ' is-3d' : ''}`}
+        aria-label={is3d ? 'Switch to 2D map' : 'Switch to 3D map'}
+        title={is3d ? 'Switch to the flat 2D map' : 'Switch to the 3D map'}
+        onClick={() => setSetting(VIEW_SETTING, is3d ? '2d' : '3d')}
+      >
+        {is3d ? '2D' : '3D'}
+      </button>
       <button
         type="button"
         className={`toolbar-button lock-button${locked ? ' is-locked' : ''}`}
@@ -60,16 +93,30 @@ export function SettingsPanel() {
               ×
             </button>
           </header>
-          <div className="settings-body">
-            {SETTING_GROUPS.map((group) => (
+          <nav className="settings-tabs" role="tablist" aria-label="Settings sections">
+            {SETTING_TABS.map((t, i) => (
+              <button
+                key={t.title}
+                type="button"
+                role="tab"
+                aria-selected={t === activeTab}
+                className={`settings-tab${t === activeTab ? ' is-active' : ''}`}
+                onClick={() => chooseTab(i)}
+              >
+                {t.title}
+              </button>
+            ))}
+          </nav>
+          <div className="settings-body" role="tabpanel" aria-label={activeTab.title}>
+            {activeTab.groups.map((group) => (
               <section key={group.title} className="settings-group">
                 <h3>{group.title}</h3>
                 {group.settings.map((s) => (
                   <SettingRow key={s.path} setting={s} />
                 ))}
-                {group.title === '3D airport view' && (
-                  <button type="button" className="settings-action" onClick={resetDioramaPlacement}>
-                    Reset position, size and angle
+                {group.action && (
+                  <button type="button" className="settings-action" onClick={group.action.run}>
+                    {group.action.label}
                   </button>
                 )}
               </section>
@@ -89,6 +136,18 @@ export function SettingsPanel() {
       )}
     </>
   )
+}
+
+/** The last tab opened, remembered in this browser. */
+const TAB_KEY = 'settingsTab'
+
+function loadTab(): number {
+  try {
+    const saved = Number(localStorage.getItem(TAB_KEY))
+    return Number.isInteger(saved) && saved >= 0 && saved < SETTING_TABS.length ? saved : 0
+  } catch {
+    return 0
+  }
 }
 
 function SettingRow({ setting }: { setting: Setting }) {
@@ -157,6 +216,14 @@ function Control({ id, setting, value }: { id: string; setting: Setting; value: 
 
 function formatNumber(n: number) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, '')
+}
+
+function MountainIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 19 9 8l4 6 3-4 6 9z" />
+    </svg>
+  )
 }
 
 function LockIcon({ locked }: { locked: boolean }) {
